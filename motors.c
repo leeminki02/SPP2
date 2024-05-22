@@ -33,9 +33,6 @@
  +-----+-----+---------+------+---+---Pi 4B--+---+------+---------+-----+-----+
  */
 
-
-#include <wiringPi.h> // Include WiringPi library!
-
 #define LED_B 20
 #define LED_R 21
 #define DEVICE_ID 0x16
@@ -46,19 +43,6 @@ int main(void)
   wiringPiSetupGpio();
 
   // pin mode ..(INPUT, OUTPUT, PWM_OUTPUT, GPIO_CLOCK)
-/*   // set pin 17 to input
-  pinMode(17, INPUT);
-
-  // pull up/down mode (PUD_OFF, PUD_UP, PUD_DOWN) => down
-  pullUpDnControl(17, PUD_DOWN);
-
-  // get state of pin 17
-  int value = digitalRead(17);
-
-  if (HIGH == value)
-  {
-    // your code
-  } */
 /*     pinMode(LED_B, OUTPUT);
     pinMode(LED_R, OUTPUT);
 
@@ -76,6 +60,7 @@ int main(void)
  */
   // testing I2C connection
   int fd = wiringPiI2CSetup(DEVICE_ID);
+  
   if (fd == -1) {
     printf("Error: cannot init I2C communication\n");
     return -1;
@@ -84,10 +69,14 @@ int main(void)
 
   // write to I2C
   // reg: 0x01, value: 1, 100, 1, 100
-  wiringPiI2CWriteReg8(fd, 0x01, 1*256^3+100*256^2+1*256+100);
-  printf("I2C write Completed: [1, 100, 1, 100]\n");
+  // wiringPiI2CWriteReg8(fd, 0x01, 1*256^3+100*256^2+1*256+100);
+  int* data = [1, 100, 1, 100];
+  wiringPiI2CWriteBlockData(fd, 0x01, data, 4);
+  // printf("I2C write Completed: [1, 100, 1, 100]\n");
   sleep(1);
-  wiringPiI2CWriteReg8(fd, 0x01, 1*256^3+0*256^2+1*256+0);
+  data = [1, 0, 1, 0]; // change back to zero values
+  wiringPiI2CWriteBlockData(fd, 0x01, data, 4);
+  // wiringPiI2CWriteReg8(fd, 0x01, 1*256^3+0*256^2+1*256+0);
   printf("I2C write Completed: [1, 0, 1, 0]\n");
   
   return 0;
