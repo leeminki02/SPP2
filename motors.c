@@ -37,7 +37,7 @@ int main(void)
     pinMode(17, INPUT); // SW3
     pinMode( 4, INPUT); // SW4 - RIGHTMOST
 
-    char buffer[] = {0x01, 1, 10, 1, 30};
+    char buffer[] = {0x01, 1, 50, 1, 50};
     /* buffer - command to send to the motors
     Example buffers
     GO straight:    0x01, 1, 50, 1, 50
@@ -46,14 +46,17 @@ int main(void)
     
      */
     // write(fd, buffer, sizeof(buffer));
-    // // printf("writing GO complete\n");
+    // printf("writing GO complete\n");
     // sleep(1);
-    // // wiringPiI2CWriteReg8(fd, 0x02, 0);
-    // buffer[0] = 0x02;
+    // // // wiringPiI2CWriteReg8(fd, 0x02, 0);
+    // buffer[0] = 0x01;
     // buffer[1] = 0;
+    // buffer[2] = 0;
+    // buffer[3] = 0;
+    // buffer[4] = 0;
     // write(fd, buffer, 2);
-    // // printf("writing STOP complete\n");
-    // // sleep(1);
+    // printf("writing PAUSE complete\n");
+    // sleep(1);
     // move servo: 0x03, id, angle
     buffer[0] = 0x03;
     buffer[1] = 1;
@@ -61,19 +64,43 @@ int main(void)
     write(fd, buffer, 3);
     delay(100);
     buffer[2] = 90;
-    int res = write(fd, buffer, 3);
-    printf("Write result: %d\n", res);
-
+    write(fd, buffer, 3);
+    delay(100);
+    buffer[2] = 45;
+    write(fd, buffer, 3);
+    delay(100);
+    buffer[2] = 90;
+    write(fd, buffer, 3);
+    delay(100);
     // test tracking module
 
     int tracking = 0b0;
+    int runcounter = 0;
+    write(fd, buffer, 2);
+    delay(100);
+
+
     while (1) {
         // 4 binary values: 0 is detected, 1 is not detected
         // save in one single integer
         // 0b0000 - (27)(22)(17)(04)
         // DON'T BE CONFUSED:: 0 is detected, 1 is not detected!
         tracking = digitalRead(27) << 3 | digitalRead(22) << 2 | digitalRead(17) << 1 | digitalRead(4);
-        printf("Tracking module: %0x\tL*", tracking);
+/*         // change for debug
+        if (runcounter < 10) {
+            // go straight
+            tracking = 9;
+        } else if (runcounter < 15) {
+            // turn right
+            tracking = 13;
+        } else if (runcounter < 20) {
+            // turn left
+            tracking = 11;
+        } else {
+            // go back
+            tracking = 15;
+        } */
+        printf("[tracking]: %d\tL*", tracking);
         // if most significant bit is 0: print - else print " "
         if ((tracking & 0b1000) == 0) {printf("-");} else {printf(" ");}
         // if x0xx: print | else print " "
@@ -82,10 +109,67 @@ int main(void)
         if ((tracking & 0b0010) == 0) {printf("|");} else {printf(" ");}
         // if xxx0: print - else print " "
         if ((tracking & 0b0001) == 0) {printf("-");} else {printf(" ");}
-        printf("*R\n");
+        printf("*R\t");
 
+        // simple line tracer
+            // rotate until 0b1001
+            // if 0b1101: turn right
+            // if 0b1011: turn left
+        buffer[0] = 0x01;
+        if (tracking == 13) {
+            // turn right
+            buffer[1] = 1;
+            buffer[2] = 80;
+            buffer[3] = 1;
+            buffer[4] = 40;
+            printf(">>> RIGHT\n");
+        } else if (tracking == 11) {
+            // turn left
+            buffer[1] = 1;
+            buffer[2] = 40;
+            buffer[3] = 1;
+            buffer[4] = 80;
+            printf(">>> LEFT\n");
+        } else if (tracking == 15) {
+            buffer[1] = 0;
+            buffer[2] = 40;
+            buffer[3] = 0;
+            buffer[4] = 40;
+            printf(">>> BACK\n");
+        } else if (tracking == 0){
+            buffer[1] = 1;
+            buffer[2] = 0;
+            buffer[3] = 1;
+            buffer[4] = 0;
+            // TODO: find which way to go here.
+            printf(">>> INTERSECTION\n");
+        } else if (tracking == 9) {
+            // go straight
+            buffer[1] = 1;
+            buffer[2] = 80;
+            buffer[3] = 1;
+            buffer[4] = 80;
+            printf(">>> STRAIGHT\n");
+        } else {
+            buffer[1] = 1;
+            buffer[2] = 30;
+            buffer[3] = 0;
+            buffer[4] = 30;
+            printf(">>> others\n");
+        }
 
-        delay(500); // TODO: change the frequency as needed
+        if (runcounter > 200) {
+            buffer[0] = 0x02;
+            buffer[1] = 0;
+            write(fd, buffer, 2);
+            delay(1000);
+            printf("========== Terminate ==========\n");
+            break;
+        }
+
+        int res = write(fd, buffer, 5);
+        runcounter++;
+        delay(25); // TODO: change the frequency as needed
     }
     return 0;
 }
