@@ -1,4 +1,3 @@
-// import motors.c qr.cpp
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,10 +5,10 @@
 #include <arpa/inet.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include "server.h"
-
 #include <wiringPi.h>
 #include <wiringPiI2C.h>
+
+#include "server.h"
 
 // 모터 제어 함수들은 이 파일에 정의
 // #include <qr.cpp>   // QR코드 인식 함수들은 이 파일에 정의
@@ -30,12 +29,15 @@ struct position oppo_pos = {0, 0, 0};
 
 int gpio_init() {
     // uses BCM numbering of the GPIOs and directly accesses the GPIO registers.
-    wiringPiSetupGpio();
     // Initializing I2C connection
+    wiringPiSetupGpio();
     int fd = wiringPiI2CSetup(DEVICE_ID);
+    pinMode(27, INPUT); // SW2 - LEFTMOST
+    pinMode(22, INPUT); // SW1
+    pinMode(17, INPUT); // SW3
+    pinMode( 4, INPUT); // SW4 - RIGHTMOST
 
-    if (fd == -1)
-    {
+    if (fd == -1) {
         printf("Error: cannot init I2C communication\n");
         return -1;
     }
@@ -49,11 +51,6 @@ int gpio_init() {
     ================================
     */
 
-    pinMode(27, INPUT); // SW2 - LEFTMOST
-    pinMode(22, INPUT); // SW1
-    pinMode(17, INPUT); // SW3
-    pinMode( 4, INPUT); // SW4 - RIGHTMOST
-
     return fd;
 }
 
@@ -66,6 +63,12 @@ int socket_init(int port) {
 
 int sendSVR(int sock, int decision){
     // @leeminki02
+    return 0;
+}
+
+int readQR() {
+    // 강규영
+    // QR 코드 인식 함수
     return 0;
 }
 
@@ -91,7 +94,7 @@ int getTraceInfo(int fd) {
     if ((tracking & 0b0010) == 0) {printf("|");} else {printf(" ");}
     // if xxx0: print - else print " "
     if ((tracking & 0b0001) == 0) {printf("-");} else {printf(" ");}
-    printf("*R\t");
+    printf("*R\n");
     
     return tracking;
 }
