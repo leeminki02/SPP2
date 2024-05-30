@@ -4,7 +4,7 @@
 #include <opencv2/core.hpp>
 #include <opencv2/objdetect.hpp>
 #include <iostream>
-
+#include <string>
 using namespace cv;
 using namespace std;
 
@@ -28,7 +28,8 @@ int qr_detector(){
         string data = qrDecoder.detectAndDecode(frame);
         if (!data.empty()) {
             cout << "QR Code detected: " << data << endl;
-            return data
+            return stoi(data);
         }
     }
+    cap.release();
 }
