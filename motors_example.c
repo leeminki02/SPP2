@@ -10,6 +10,21 @@
 #define LED_R 21
 #define DEVICE_ID 0x16
 
+int getTraceInfo(int fd) {
+    tracking = digitalRead(27) << 3 | digitalRead(22) << 2 | digitalRead(17) << 1 | digitalRead(4);
+    printf("[tracking]: %d\tL*", tracking);
+    // if most significant bit is 0: print - else print " "
+    if ((tracking & 0b1000) == 0) {printf("-");} else {printf(" ");}
+    // if x0xx: print | else print " "
+    if ((tracking & 0b0100) == 0) {printf("|");} else {printf(" ");}
+    // if xx0x: print | else print " "
+    if ((tracking & 0b0010) == 0) {printf("|");} else {printf(" ");}
+    // if xxx0: print - else print " "
+    if ((tracking & 0b0001) == 0) {printf("-");} else {printf(" ");}
+    printf("*R\t");
+    
+}
+
 int main(void)
 {
     // uses BCM numbering of the GPIOs and directly accesses the GPIO registers.
@@ -42,21 +57,8 @@ int main(void)
     Example buffers
     GO straight:    0x01, 1, 50, 1, 50
     STOP:           0x02, 0
-    Move servo:     0x03, id, angle
-    
+    Move servo:     0x03, id, angle    
      */
-    // write(fd, buffer, sizeof(buffer));
-    // printf("writing GO complete\n");
-    // sleep(1);
-    // // // wiringPiI2CWriteReg8(fd, 0x02, 0);
-    // buffer[0] = 0x01;
-    // buffer[1] = 0;
-    // buffer[2] = 0;
-    // buffer[3] = 0;
-    // buffer[4] = 0;
-    // write(fd, buffer, 2);
-    // printf("writing PAUSE complete\n");
-    // sleep(1);
     // move servo: 0x03, id, angle
     buffer[0] = 0x03;
     buffer[1] = 1;
@@ -173,3 +175,4 @@ int main(void)
     }
     return 0;
 }
+
