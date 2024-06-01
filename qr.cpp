@@ -9,7 +9,7 @@ using namespace cv;
 using namespace std;
 
 int qr_detector(){
-    QRCodeDetector qrDecoder = QRCodeDetector::QRCodeDetector();
+    QRCodeDetector qrDecoder = QRCodeDetector();
 
     VideoCapture cap(0);
     if (!cap.isOpened()) {

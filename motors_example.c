@@ -13,18 +13,78 @@ int tracking;
 
 int getTraceInfo(int fd) {
     tracking = digitalRead(27) << 3 | digitalRead(22) << 2 | digitalRead(17) << 1 | digitalRead(4);
-    printf("[tracking]: %d\tL*", tracking);
-    // if most significant bit is 0: print - else print " "
-    if ((tracking & 0b1000) == 0) {printf("-");} else {printf(" ");}
-    // if x0xx: print | else print " "
-    if ((tracking & 0b0100) == 0) {printf("|");} else {printf(" ");}
-    // if xx0x: print | else print " "
-    if ((tracking & 0b0010) == 0) {printf("|");} else {printf(" ");}
-    // if xxx0: print - else print " "
-    if ((tracking & 0b0001) == 0) {printf("-");} else {printf(" ");}
-    printf("*R\t");
+    // printf("[tracking]: %d\tL*", tracking);
+    // // if most significant bit is 0: print - else print " "
+    // if ((tracking & 0b1000) == 0) {printf("-");} else {printf(" ");}
+    // // if x0xx: print | else print " "
+    // if ((tracking & 0b0100) == 0) {printf("|");} else {printf(" ");}
+    // // if xx0x: print | else print " "
+    // if ((tracking & 0b0010) == 0) {printf("|");} else {printf(" ");}
+    // // if xxx0: print - else print " "
+    // if ((tracking & 0b0001) == 0) {printf("-");} else {printf(" ");}
+    // printf("*R\t");
     return tracking;
 }
+    int turn90(int fd, int left_right){ //left = 0, right = 1, uturn= 2
+        int tracking = 0;
+        int turn_count = 0; 
+        char buffer[] = {0x01, 1, 200, 1, 200};
+        while (1){
+            if (left_right == 0){
+                buffer[1] = 0;
+                buffer[2] = 150;
+                buffer[3] = 1;
+                buffer[4] = 150;
+            }
+            else if(left_right == 1){
+                buffer[1] = 1;
+                buffer[2] = 150;
+                buffer[3] = 0;
+                buffer[4] = 150;
+            }
+            else{
+                buffer[1] = 1;
+                buffer[2] = 100;
+                buffer[3] = 0;
+                buffer[4] = 100;
+
+            }
+            if (left_right != 2){
+                tracking = getTraceInfo(fd);
+                if (tracking != 0b1111 &&turn_count>50){//150-20
+                    printf("turn_count :%d",turn_count);
+                    break;
+                }
+                write(fd, buffer, 5);
+                delay(5);
+                turn_count ++;
+                printf(">>> turning : %d\n",left_right);
+                if(turn_count > 200){//150-80
+                    printf("kill!!!!!!!!!!!!!1");
+                    return tracking;
+                }
+            }
+            else{
+                tracking = getTraceInfo(fd);
+                if (tracking != 0b1111 &&turn_count>150){
+                    printf("turn_count :%d",turn_count);
+                    break;
+                }
+                write(fd, buffer, 5);
+                delay(5);
+                turn_count ++;
+                printf(">>> turning : %d\n",left_right);
+                if(turn_count > 400){
+                    printf("kill!!!!!!!!!!!!!1");
+                    return tracking;
+                }
+
+            }
+        }
+        return tracking;
+    }
+
+
 
 int main(void)
 {
@@ -53,7 +113,9 @@ int main(void)
     pinMode(17, INPUT); // SW3
     pinMode( 4, INPUT); // SW4 - RIGHTMOST
 
-    char buffer[] = {0x01, 1, 50, 1, 50};
+    char buffer[] = {0x01, 1, 200, 1, 200};
+    char old_buffer[] = {0x01, 1, 50, 1, 50};
+
     /* buffer - command to send to the motors
     Example buffers
     GO straight:    0x01, 1, 50, 1, 50
@@ -76,9 +138,10 @@ int main(void)
     write(fd, buffer, 3);
     delay(100);
     // test tracking module
-
     int tracking = 0b0;
+    int old_tracking = 0b0;
     int runcounter = 0;
+    int lineout_counter = 0;
     write(fd, buffer, 2);
     delay(100);
     int int_res;
@@ -88,6 +151,12 @@ int main(void)
         // 0b0000 - (27)(22)(17)(04)
         // DON'T BE CONFUSED:: 0 is detected, 1 is not detected!
         tracking = getTraceInfo(fd);
+        if (tracking == 0b1111){
+            lineout_counter++;
+        }
+        else{
+            lineout_counter = 0;
+        }
 /*         // change for debug
         if (runcounter < 10) {
             // go straight
@@ -108,63 +177,73 @@ int main(void)
             // if 0b1101: turn right
             // if 0b1011: turn left
         buffer[0] = 0x01;
+        if (tracking != old_tracking)
+        printf("tracking :%d",tracking);
 
-        if (tracking == 13) {
+        if (tracking == 0|| tracking == 1||tracking == 2||tracking == 4||tracking == 8||tracking == 10||tracking == 5||tracking == 6){ //0000 0001 0010 0100 1000 1010 0101 0110
+            tracking = turn90(fd,2);
+            if (tracking != old_tracking)
+            printf(">>> INTERSECTION :[%d]\n", tracking);
+            // TODO: find which way to go here.
+        }
+        else if (tracking == 13 || tracking == 12 || tracking == 14) { //1101 1100 1110
             // turn right
             buffer[1] = 1;
-            buffer[2] = 80;
+            buffer[2] = 100;
             buffer[3] = 1;
-            buffer[4] = 40;
+            buffer[4] = 50;
+            if (tracking != old_tracking)
             printf(">>> slight RIGHT\n");
-        } else if (tracking == 11) {
+        } else if (tracking == 11||tracking == 3 ||tracking == 7 ) { //1011 0011 0111
             // turn left
             buffer[1] = 1;
-            buffer[2] = 40;
+            buffer[2] = 50;
             buffer[3] = 1;
-            buffer[4] = 80;
+            buffer[4] = 100;
+            if (tracking != old_tracking)
             printf(">>> slight LEFT\n");
-        } else if (tracking == 15) {
+        } else if (tracking == 15 && lineout_counter<250) { //1111
+            buffer[1] = old_buffer[1];
+            buffer[2] = old_buffer[2];
+            buffer[3] = old_buffer[3];
+            buffer[4] = old_buffer[4];
+            if (tracking != old_tracking)
+            printf(">>> lineout : go\n");
+        }
+        else if (tracking == 15){ //1111
             buffer[1] = 0;
             buffer[2] = 40;
             buffer[3] = 0;
             buffer[4] = 40;
-            printf(">>> BACK\n");
-        } else if (tracking == 0){
-            buffer[1] = 0;
-            buffer[2] = 200;
-            buffer[3] = 1;
-            buffer[4] = 200;
-            int_res = write(fd, buffer, 5);
-            delay(750);
-            printf(">>> INTERSECTION :[%d]\n", int_res);
-            // TODO: find which way to go here.
-        } else if (tracking == 9) {
+            if (tracking != old_tracking)
+            printf(">>> line out : BACK\n");
+        }
+        else if (tracking == 9) {//1001
             // go straight
             buffer[1] = 1;
             buffer[2] = 80;
             buffer[3] = 1;
             buffer[4] = 80;
+            if (tracking != old_tracking)
             printf(">>> STRAIGHT\n");
-        } else {
-            buffer[1] = 1;
-            buffer[2] = 30;
-            buffer[3] = 0;
-            buffer[4] = 30;
-            printf(">>> others\n");
         }
-
-        if (runcounter > 100) {
+        if (runcounter > 1000) {
             buffer[0] = 0x02;
             buffer[1] = 0;
             write(fd, buffer, 2);
             delay(1000);
+            if (tracking != old_tracking)
             printf("========== Terminate ==========\n");
             break;
-        }
-
+        }        
+        old_tracking  = tracking;
         int res = write(fd, buffer, 5);
+        old_buffer[1] = buffer[1];
+        old_buffer[2] = buffer[4];
+        old_buffer[3] = buffer[3];
+        old_buffer[4] = buffer[2];
         runcounter++;
-        delay(25); // TODO: change the frequency as needed
+        delay(5); // TODO: change the frequency as needed
     }
     return 0;
 }

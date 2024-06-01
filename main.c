@@ -11,10 +11,10 @@
 #include "server.h"
 
 // 모터 제어 함수들은 이 파일에 정의
-// #include <qr.cpp>   // QR코드 인식 함수들은 이 파일에 정의
+#include "qr.h" // QR코드 인식 함수들은 이 파일에 정의
 #define DEVICE_ID 0x16      // <- I2C device ID. This is the ID of connection.
 
-#define INTERVAL 20         // <- Interval time for each loop. unit: ms(miliseconds)
+#define INTERVAL 5         // <- Interval time for each loop. unit: ms(miliseconds)
 #define DURATION 6          // <- While loop duration. after (DURATION) seconds, the loop terminates. unit: seconds
 #define INPUT 0
 
@@ -68,8 +68,9 @@ int sendSVR(int sock, int decision){
 
 int readQR() {
     // 강규영
+    
     // QR 코드 인식 함수
-    return 0;
+    return qr_detector();
 }
 
 // dooraemee0: include 같은건 추가해야함
@@ -99,109 +100,124 @@ int getTraceInfo(int fd) {
     return tracking;
 }
 
-char buf_go[5] = {0x01, 1, 200, 1, 200};
+char buffer[5] = {0x01, 1, 200, 1, 200};
+char old_buffer[5] = {0x01, 1, 200, 1, 200};
 char buf_stop[2] = {0x02, 0};
+int lineout_counter = 0;
 
-int traceLine(int fd, int tracked, int speed) {
-    if (tracked == 13) {
-        // turn right
-        buf_go[1] = 1;
-        buf_go[2] = 100;
-        buf_go[3] = 1;
-        buf_go[4] = 30;
-        printf(">>> slight RIGHT\n");
-    } else if (tracked == 11) {
-        // turn left
-        buf_go[1] = 1;
-        buf_go[2] = 30;
-        buf_go[3] = 1;
-        buf_go[4] = 100;
-        printf(">>> slight LEFT\n");
-    } else if (tracked == 15) {
-        buf_go[1] = 0;
-        buf_go[2] = 100 / 2;
-        buf_go[3] = 0;
-        buf_go[4] = 100 / 2;
-        printf(">>> BACK\n");
-    } else if (tracked == 0b1001) {
-        buf_go[1] = 1;
-        buf_go[2] = 100;
-        buf_go[3] = 1;
-        buf_go[4] = 100;
-    } else if (tracked == 0b1000 || tracked == 0b0000 || tracked == 0b0001) {
-        // This means that tracker have detected a intersection
-        printf(">>> Intersection detected\n");
-        return -1;
-    } else {
-        printf(">>> Invalid tracking value\n");
-        return -1;
-    }
-    int res = write(fd, buf_go, 5);
+int traceLine(int fd, int tracking, int shift) { //no shift = 0, robot left shift = 1, robot right shift = 2
+    if (tracking == 0b1111){
+            lineout_counter++;
+        }
+        else{
+            lineout_counter = 0;
+        }
+        buffer[0] = 0x01;
+        int res = 0;
+        if (tracking == 0|| tracking == 1||tracking == 2||tracking == 4||tracking == 8||tracking == 10||tracking == 5||tracking == 6){ //0000 0001 0010 0100 1000 1010 0101 0110
+            res = -1;
+            printf(">>> INTERSECTION :[%d]\n", tracking);
+            // TODO: find which way to go here.
+        }
+        else if (tracking == 13 || tracking == 12 || tracking == 14) { //1101 1100 1110
+            // turn right
+            buffer[1] = 1;
+            buffer[2] = 90;
+            buffer[3] = 1;
+            buffer[4] = 50;
+            printf(">>> slight RIGHT\n");
+        } else if (tracking == 11||tracking == 3 ||tracking == 7 ) { //1011 0011 0111
+            // turn left
+            buffer[1] = 1;
+            buffer[2] = 50;
+            buffer[3] = 1;
+            buffer[4] = 90;
+            printf(">>> slight LEFT\n");
+        } else if (tracking == 15 && lineout_counter<250) { //1111
+            buffer[1] = old_buffer[1];
+            buffer[2] = old_buffer[2];
+            buffer[3] = old_buffer[3];
+            buffer[4] = old_buffer[4];
+            printf(">>> lineout : go\n");
+        }
+        else if (tracking == 15){ //1111
+            buffer[1] = 0;
+            buffer[2] = 40;
+            buffer[3] = 0;
+            buffer[4] = 40;
+            printf(">>> line out : BACK\n");
+        }
+        else if (tracking == 9) {//1001
+            // go straight
+            buffer[1] = 1;
+            buffer[2] = 80;
+            buffer[3] = 1;
+            buffer[4] = 80;
+            printf(">>> STRAIGHT\n");
+        }   
+        write(fd, buffer, 5);
+        old_buffer[1] = buffer[1];
+        old_buffer[2] = buffer[4];
+        old_buffer[3] = buffer[3];
+        old_buffer[4] = buffer[2];
     delay(INTERVAL);    // delay loop for INTERVAL miliseconds
-    return res; // 비정상 종료시 -1, 나먨지 숫자 반환시 정상적으로 전송된 것.
+    return res; // res = -1 for intersection, 0 for rest
 }
 
-int makeTurn(int fd, int decision) {
-    // FIXME: implement using the while loop to make sure it moves precisely.
-    int traceInfo;
-    switch (decision) {
-        case 0: // straight
-            break;
-        case 1: // left
-            printf("LEFT\n");
-            buf_go[1] = 0;
-            buf_go[2] = 0; // 왼쪽 속도 감소
-            buf_go[3] = 1;
-            buf_go[4] = 100;
-            while(1) {
-                write(fd, buf_go, 5);
-                delay(10);
-                traceInfo = getTraceInfo(fd);
-                if (traceInfo != 0b1111) {
+int makeTurn(int fd, int decision) {//left = 0, right = 1, uturn= 2
+        int tracking = 0;
+        int turn_count = 0; 
+        while (1){
+                buffer[0] = 0x01;
+            if (decision == 0){
+                buffer[1] = 0;
+                buffer[2] = 150;
+                buffer[3] = 1;
+                buffer[4] = 150;
+            }
+            else if(decision == 1){
+                buffer[1] = 1;
+                buffer[2] = 150;
+                buffer[3] = 0;
+                buffer[4] = 150;
+            }
+            else{
+                buffer[1] = 1;
+                buffer[2] = 100;
+                buffer[3] = 0;
+                buffer[4] = 100;
+
+            }
+            if (decision != 2){
+                tracking = getTraceInfo(fd);
+                if (tracking != 0b1111 &&turn_count>50){
                     break;
                 }
-            }
-            break;
-        case 2: // U-turn
-            printf("U-Turn\n");
-            buf_go[1] = 0;
-            buf_go[2] = 100;
-            buf_go[3] = 1;
-            buf_go[4] = 100;
-            int tracecounter = 0;
-            while(1) {
-                write(fd, buf_go, 5);
-                delay(25);
-                traceInfo = getTraceInfo(fd);
-                if (traceInfo == 0b1000 || traceInfo == 0b0000 || traceInfo == 0b0001 || traceInfo == 0b1001) {
-                    tracecounter++;
+                write(fd, buffer, 5);
+                delay(INTERVAL);
+                turn_count ++;
+                if(turn_count > 200){
+                    printf("kill!!!!!!!!!!!!!1");
+                    return tracking;
                 }
-                if (tracecounter == 2) break;
             }
-            break;
-        case 3: // right
-            printf("RIGHT\n");
-            buf_go[1] = 1;
-            buf_go[2] = 100;
-            buf_go[3] = 0;
-            buf_go[4] = 0; // 오른쪽 속도 감소
-            while(1) {
-                write(fd, buf_go, 5);
-                delay(25);
-                traceInfo = getTraceInfo(fd);
-                if (traceInfo == 0b1000 || traceInfo == 0b0000 || traceInfo == 0b0001 || traceInfo == 0b1001) {
+            else{
+                tracking = getTraceInfo(fd);
+                if (tracking != 0b1111 &&turn_count>150){
                     break;
                 }
+                write(fd, buffer, 5);
+                delay(INTERVAL);
+                turn_count ++;
+                if(turn_count > 400){
+                    printf("kill!!!!!!!!!!!!!1");
+                    return tracking;
+                }
+
             }
-            break;
-        default:
-            printf("Invalid decision value\n");
-            return -1;
+        }
+        return tracking;
     }
-    int res = write(fd, buf_go, 5);
-    delay(INTERVAL);    // delay loop for INTERVAL miliseconds
-    return res; // 비정상 종료시 -1, 나머지 숫자 반환시 정상적으로 전송된 것.
-}
 
 void updateCoord() {
     // 현재 위치와 방향에 따라 좌표를 업데이트
