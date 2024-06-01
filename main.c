@@ -104,21 +104,73 @@ char buf_stop[2] = {0x02, 0};
 
 int moveBot(int fd, int decision, int speed) { 
     // @dooraemee0
-    // decision 값: 0: straight, 1: left, 2: down, 3: right
-    // speed 값: 최대 속도. 돌거나 할 때 양 쪽 속도가 달라야 한다면 한쪽을 25~50% 정도 값을 주면 됨
-    /* 
-    buffer - command to send to the motors
-            Example buffers
-            GO:         [0x01, 1, left_speed, 1, right_speed]
-            STOP:       [0x02, 0]
-            Servo:      [0x03, id, angle]    // 서보모터 제어인데, 쓸모 없음
-    */
-    // 웬만하면 STOP을 쓰지 않고 GO(speed 0)을 주는 게 좋음: STOP 한번 주니까 계속 다시 실행 안되는 버그가 있는듯. 그냥 속도 0 주고, 마지막에 로봇 자체를 멈출 때만 STOP 주면 될듯
-    // 각 방향 구현 방법은 motors_example.c 파일 참고!
+    char buffer[5];
+    buffer[0] = 0x01; // GO
 
+    switch (decision) {
+        case 0: // straight
+            buffer[1] = 1;
+            buffer[2] = speed;
+            buffer[3] = 1;
+            buffer[4] = speed;
+            break;
+        case 1: // left
+            buffer[1] = 1;
+            buffer[2] = speed * 0.25; // 왼쪽 속도 감소
+            buffer[3] = 1;
+            buffer[4] = speed;
+            break;
+        case 2: // down (reverse)
+            buffer[1] = 0;
+            buffer[2] = speed;
+            buffer[3] = 0;
+            buffer[4] = speed;
+            break;
+        case 3: // right
+            buffer[1] = 1;
+            buffer[2] = speed;
+            buffer[3] = 1;
+            buffer[4] = speed * 0.25; // 오른쪽 속도 감소
+            break;
+        default:
+            printf("Invalid decision value\n");
+            return -1;
+    }
+
+    int res = write(fd, buffer, 5);
+    return res; // 비정상 종료시 -1, 나머지 숫자 반환시 정상적으로 전송된 것.
     int res = write(fd, buf_go, 5);
     return res; // 비정상 종료시 -1, 나머지 숫자 반환시 정상적으로 전송된 것.
 }; 
+
+void onNode() {
+    // 현재 위치와 방향에 따라 좌표를 업데이트
+    switch (curr_pos.dir) {
+        case 0: // RIGHT
+            curr_pos.x += 1;
+            break;
+        case 1: // UP
+            curr_pos.y += 1;
+            break;
+        case 2: // LEFT
+            curr_pos.x -= 1;
+            break;
+        case 3: // DOWN
+            curr_pos.y -= 1;
+            break;
+        default:
+            printf("Invalid direction\n");
+            break;
+    }
+
+    // 좌표가 범위를 벗어나지 않도록 확인
+    if (curr_pos.x < -1) curr_pos.x = -1;
+    if (curr_pos.x > 5) curr_pos.x = 5;
+    if (curr_pos.y < 0) curr_pos.y = 0;
+    if (curr_pos.y > 4) curr_pos.y = 4;
+
+    printf("Updated position: (%d, %d, %d)\n", curr_pos.x, curr_pos.y, curr_pos.dir);
+}
 
 int decide(int tracked) {
     // @minseok
@@ -186,6 +238,7 @@ int main(int argc, char *argv[]){
         
         // @minseok -> complete conditions
         if (1 /* we detected intersection */) {
+            onNode();                         // update the current position
             decision = decide(tracked);       // decide the next move and save the value to decision
         } else if ( 1/* we detect qr code from camera */) {
             // slow down maybe?
