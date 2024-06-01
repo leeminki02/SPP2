@@ -9,6 +9,7 @@
 #define LED_B 20
 #define LED_R 21
 #define DEVICE_ID 0x16
+int tracking;
 
 int getTraceInfo(int fd) {
     tracking = digitalRead(27) << 3 | digitalRead(22) << 2 | digitalRead(17) << 1 | digitalRead(4);
@@ -22,7 +23,7 @@ int getTraceInfo(int fd) {
     // if xxx0: print - else print " "
     if ((tracking & 0b0001) == 0) {printf("-");} else {printf(" ");}
     printf("*R\t");
-    
+    return tracking;
 }
 
 int main(void)
@@ -80,14 +81,13 @@ int main(void)
     int runcounter = 0;
     write(fd, buffer, 2);
     delay(100);
-
-
+    int int_res;
     while (1) {
         // 4 binary values: 0 is detected, 1 is not detected
         // save in one single integer
         // 0b0000 - (27)(22)(17)(04)
         // DON'T BE CONFUSED:: 0 is detected, 1 is not detected!
-        tracking = digitalRead(27) << 3 | digitalRead(22) << 2 | digitalRead(17) << 1 | digitalRead(4);
+        tracking = getTraceInfo(fd);
 /*         // change for debug
         if (runcounter < 10) {
             // go straight
@@ -102,36 +102,27 @@ int main(void)
             // go back
             tracking = 15;
         } */
-        printf("[tracking]: %d\tL*", tracking);
-        // if most significant bit is 0: print - else print " "
-        if ((tracking & 0b1000) == 0) {printf("-");} else {printf(" ");}
-        // if x0xx: print | else print " "
-        if ((tracking & 0b0100) == 0) {printf("|");} else {printf(" ");}
-        // if xx0x: print | else print " "
-        if ((tracking & 0b0010) == 0) {printf("|");} else {printf(" ");}
-        // if xxx0: print - else print " "
-        if ((tracking & 0b0001) == 0) {printf("-");} else {printf(" ");}
-        printf("*R\t");
 
         // simple line tracer
             // rotate until 0b1001
             // if 0b1101: turn right
             // if 0b1011: turn left
         buffer[0] = 0x01;
+
         if (tracking == 13) {
             // turn right
             buffer[1] = 1;
             buffer[2] = 80;
             buffer[3] = 1;
             buffer[4] = 40;
-            printf(">>> RIGHT\n");
+            printf(">>> slight RIGHT\n");
         } else if (tracking == 11) {
             // turn left
             buffer[1] = 1;
             buffer[2] = 40;
             buffer[3] = 1;
             buffer[4] = 80;
-            printf(">>> LEFT\n");
+            printf(">>> slight LEFT\n");
         } else if (tracking == 15) {
             buffer[1] = 0;
             buffer[2] = 40;
@@ -139,12 +130,14 @@ int main(void)
             buffer[4] = 40;
             printf(">>> BACK\n");
         } else if (tracking == 0){
-            buffer[1] = 1;
-            buffer[2] = 0;
+            buffer[1] = 0;
+            buffer[2] = 200;
             buffer[3] = 1;
-            buffer[4] = 0;
+            buffer[4] = 200;
+            int_res = write(fd, buffer, 5);
+            delay(750);
+            printf(">>> INTERSECTION :[%d]\n", int_res);
             // TODO: find which way to go here.
-            printf(">>> INTERSECTION\n");
         } else if (tracking == 9) {
             // go straight
             buffer[1] = 1;
@@ -160,7 +153,7 @@ int main(void)
             printf(">>> others\n");
         }
 
-        if (runcounter > 200) {
+        if (runcounter > 100) {
             buffer[0] = 0x02;
             buffer[1] = 0;
             write(fd, buffer, 2);
