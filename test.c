@@ -54,7 +54,7 @@ int getTraceInfo(int fd) {
                 if (tracking != 0b1111) {
                     printf("early turn_count :%d",turn_count);
                 }
-                if ((tracking != 0b1111) &&turn_count>60){//150-20
+                if ((tracking != 0b1111)){//150-20
                     printf("turn_count :%d",turn_count);
                     break;
                 }
@@ -145,7 +145,6 @@ int main(void)
     int old_tracking = 0b0;
     int runcounter = 0;
     int lineout_counter = 0;
-    int line_counter = 0;
     write(fd, buffer, 2);
     delay(100);
     int int_res;
@@ -184,14 +183,22 @@ int main(void)
         if (tracking != old_tracking)
         printf("tracking :%d",tracking);
 
-        if (line_counter>40 && tracking == 7||tracking == 3||tracking == 0|| tracking == 1||tracking == 2||tracking == 4||tracking == 8||tracking == 10||tracking == 5||tracking == 6){ //0000 0001 0010 0100 1000 1010 0101 0110
-            tracking = turn90(fd,0);
-            if (tracking != old_tracking)
-            printf(">>> INTERSECTION :[%d]\n", tracking);
-            line_counter = 0;
+        if (tracking == 0|| tracking == 2||tracking == 4||tracking == 10||tracking == 5||tracking == 6){ //0000  0010 0100  1010 0101 0110
+            //tracking = turn90(fd,1);
+            printf(">>> just go..%d\n", tracking);
             // TODO: find which way to go here.
         }
-        else if (tracking == 12) { //1101 1100
+        else if (tracking == 3||tracking == 1){ //0011 0001
+            tracking = turn90(fd,0);
+            // TODO: find which way to go here.
+        }
+        else if (tracking == 8||tracking == 12){ //1100 1000 
+            tracking = turn90(fd,1);
+            if (tracking != old_tracking)
+            printf(">>> INTERSECTION :[%d]\n", tracking);
+            // TODO: find which way to go here.
+        }
+        else if (tracking == 13) { //1101 
             // turn right
             buffer[1] = 1;
             buffer[2] = 100;
@@ -202,12 +209,12 @@ int main(void)
         } else if (tracking == 14) { // 1110
             // turn right
             buffer[1] = 1;
-            buffer[2] = 130;
-            buffer[3] = 1;
-            buffer[4] = 40;
+            buffer[2] = 150;
+            buffer[3] = 0;
+            buffer[4] = 60;
             if (tracking != old_tracking)
             printf(">>> big RIGHT\n");
-        } else if (tracking == 11||tracking == 3 ) { //1011 0011 
+        } else if (tracking == 11 ) { //1011 
             // turn left
             buffer[1] = 1;
             buffer[2] = 50;
@@ -217,13 +224,14 @@ int main(void)
             printf(">>> slight LEFT\n");
         } else if (tracking == 7 ) { // 0111
             // turn left
-            buffer[1] = 1;
-            buffer[2] = 40;
+            buffer[1] = 0;
+            buffer[2] = 60;
             buffer[3] = 1;
-            buffer[4] = 130;
+            buffer[4] = 150;
+            if (tracking != old_tracking)
             if (tracking != old_tracking)
             printf(">>> big LEFT\n");
-        }else if (tracking == 15 && lineout_counter<250) { //1111
+        }else if (tracking == 15 && lineout_counter<100) { //1111
             buffer[1] = old_buffer[1];
             buffer[2] = old_buffer[2];
             buffer[3] = old_buffer[3];
@@ -239,16 +247,16 @@ int main(void)
             if (tracking != old_tracking)
             printf(">>> line out : BACK\n");
         }
-        else if (tracking == 13 ||tracking == 9) {//1001 1101
+        else if (tracking == 9) {//1001
             // go straight
             buffer[1] = 1;
-            buffer[2] = 70;
+            buffer[2] = 80;
             buffer[3] = 1;
             buffer[4] = 80;
             if (tracking != old_tracking)
             printf(">>> STRAIGHT\n");
         }
-        if (runcounter > 1500) {
+        if (runcounter > 3000) {
             buffer[0] = 0x02;
             buffer[1] = 0;
             write(fd, buffer, 2);
@@ -264,7 +272,6 @@ int main(void)
         old_buffer[3] = buffer[3];
         old_buffer[4] = buffer[2];
         runcounter++;
-        line_counter++;
         delay(5); // TODO: change the frequency as needed
     }
     return 0;
