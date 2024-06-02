@@ -191,7 +191,7 @@ int main(void)
             line_counter = 0;
             // TODO: find which way to go here.
         }
-        else if (tracking == 13 || tracking == 12) { //1101 1100
+        else if (tracking == 12) { //1101 1100
             // turn right
             buffer[1] = 1;
             buffer[2] = 100;

@@ -161,35 +161,50 @@ char buffer[5] = {0x01, 1, 200, 1, 200};
 char old_buffer[5] = {0x01, 1, 200, 1, 200};
 char buf_stop[2] = {0x02, 0};
 int lineout_counter = 0;
+int line_counter = 0;
 
 int traceLine(int fd, int tracking, int shift) { //no shift = 0, robot left shift = 1, robot right shift = 2
     if (tracking == 0b1111){
-            lineout_counter++;
-        }
-        else{
-            lineout_counter = 0;
-        }
-        buffer[0] = 0x01;
-        int res = 0;
+        lineout_counter++;
+    }
+    else{
+        lineout_counter = 0;
+    }
+    buffer[0] = 0x01;
+    int res = 0;
+    if(shift == 0){
         if (tracking == 0|| tracking == 1||tracking == 2||tracking == 4||tracking == 8||tracking == 10||tracking == 5||tracking == 6){ //0000 0001 0010 0100 1000 1010 0101 0110
             res = -1;
             printf(">>> INTERSECTION :[%d]\n", tracking);
-            // TODO: find which way to go here.
         }
-        else if (tracking == 13 || tracking == 12 || tracking == 14) { //1101 1100 1110
+        else if (tracking == 13 || tracking == 12) { //1101 1100
             // turn right
             buffer[1] = 1;
-            buffer[2] = 90;
+            buffer[2] = 100;
             buffer[3] = 1;
             buffer[4] = 50;
             printf(">>> slight RIGHT\n");
-        } else if (tracking == 11||tracking == 3 ||tracking == 7 ) { //1011 0011 0111
+        } else if (tracking == 14) { // 1110
+            // turn right
+            buffer[1] = 1;
+            buffer[2] = 130;
+            buffer[3] = 1;
+            buffer[4] = 40;
+            printf(">>> big RIGHT\n");
+        } else if (tracking == 11||tracking == 3 ) { //1011 0011 
             // turn left
             buffer[1] = 1;
             buffer[2] = 50;
             buffer[3] = 1;
-            buffer[4] = 90;
+            buffer[4] = 100;
             printf(">>> slight LEFT\n");
+        } else if (tracking == 7 ) { // 0111
+            // turn left
+            buffer[1] = 1;
+            buffer[2] = 40;
+            buffer[3] = 1;
+            buffer[4] = 130;
+            printf(">>> big LEFT\n");
         } else if (tracking == 15 && lineout_counter<250) { //1111
             buffer[1] = old_buffer[1];
             buffer[2] = old_buffer[2];
@@ -212,70 +227,201 @@ int traceLine(int fd, int tracking, int shift) { //no shift = 0, robot left shif
             buffer[4] = 80;
             printf(">>> STRAIGHT\n");
         }   
-        write(fd, buffer, 5);
-        old_buffer[1] = buffer[1];
-        old_buffer[2] = buffer[4];
-        old_buffer[3] = buffer[3];
-        old_buffer[4] = buffer[2];
+    }
+    else if(shift == 1){ // left shift
+        if (line_counter>40 && tracking == 7||tracking == 3||tracking == 0|| tracking == 1||tracking == 2||tracking == 4||tracking == 8||tracking == 10||tracking == 5||tracking == 6){ //0000 0001 0010 0100 1000 1010 0101 0110
+            res = -1;
+            printf(">>> INTERSECTION :[%d]\n", tracking);
+            line_counter = 0;
+        }
+        else if (tracking == 12) { //1101 1100
+            // turn right
+            buffer[1] = 1;
+            buffer[2] = 100;
+            buffer[3] = 1;
+            buffer[4] = 50;
+            printf(">>> slight RIGHT\n");
+        } else if (tracking == 14) { // 1110
+            // turn right
+            buffer[1] = 1;
+            buffer[2] = 130;
+            buffer[3] = 1;
+            buffer[4] = 40;
+            printf(">>> big RIGHT\n");
+        } else if (tracking == 11||tracking == 3 ) { //1011 0011 
+            // turn left
+            buffer[1] = 1;
+            buffer[2] = 50;
+            buffer[3] = 1;
+            buffer[4] = 100;
+            printf(">>> slight LEFT\n");
+        } else if (tracking == 7 ) { // 0111
+            // turn left
+            buffer[1] = 1;
+            buffer[2] = 40;
+            buffer[3] = 1;
+            buffer[4] = 130;
+            printf(">>> big LEFT\n");
+        } else if (tracking == 15 && lineout_counter<250) { //1111
+            buffer[1] = old_buffer[1];
+            buffer[2] = old_buffer[2];
+            buffer[3] = old_buffer[3];
+            buffer[4] = old_buffer[4];
+            printf(">>> lineout : go\n");
+        }
+        else if (tracking == 15){ //1111
+            buffer[1] = 0;
+            buffer[2] = 40;
+            buffer[3] = 0;
+            buffer[4] = 40;
+            printf(">>> line out : BACK\n");
+        }
+        else if (tracking == 13 ||tracking == 9) {//1001 1101
+            // go straight
+            buffer[1] = 1;
+            buffer[2] = 70;
+            buffer[3] = 1;
+            buffer[4] = 80;
+            printf(">>> STRAIGHT\n");
+        }   
+    }
+    else if(shift == 2){
+                if (line_counter>40 && tracking == 14||tracking == 12||tracking == 0|| tracking == 1||tracking == 2||tracking == 4||tracking == 8||tracking == 10||tracking == 5||tracking == 6){ //0000 0001 0010 0100 1000 1010 0101 0110
+            res = -1;
+            printf(">>> INTERSECTION :[%d]\n", tracking);
+            line_counter = 0;
+        }
+        else if (tracking == 13 || tracking == 12) { //1101 1100
+            // turn right
+            buffer[1] = 1;
+            buffer[2] = 100;
+            buffer[3] = 1;
+            buffer[4] = 50;
+            printf(">>> slight RIGHT\n");
+        } else if (tracking == 14) { // 1110
+            // turn right
+            buffer[1] = 1;
+            buffer[2] = 130;
+            buffer[3] = 1;
+            buffer[4] = 40;
+            printf(">>> big RIGHT\n");
+        } else if (tracking == 3 ) { // 0011 
+            // turn left
+            buffer[1] = 1;
+            buffer[2] = 50;
+            buffer[3] = 1;
+            buffer[4] = 100;
+            printf(">>> slight LEFT\n");
+        } else if (tracking == 7 ) { // 0111
+            // turn left
+            buffer[1] = 1;
+            buffer[2] = 40;
+            buffer[3] = 1;
+            buffer[4] = 130;
+            printf(">>> big LEFT\n");
+        } else if (tracking == 15 && lineout_counter<250) { //1111
+            buffer[1] = old_buffer[1];
+            buffer[2] = old_buffer[2];
+            buffer[3] = old_buffer[3];
+            buffer[4] = old_buffer[4];
+            printf(">>> lineout : go\n");
+        }
+        else if (tracking == 15){ //1111
+            buffer[1] = 0;
+            buffer[2] = 40;
+            buffer[3] = 0;
+            buffer[4] = 40;
+            printf(">>> line out : BACK\n");
+        }
+        else if (tracking == 11 ||tracking == 9) {//1001 1011
+            // go straight
+            buffer[1] = 1;
+            buffer[2] = 80;
+            buffer[3] = 1;
+            buffer[4] = 70;
+            printf(">>> STRAIGHT\n");
+        }   
+
+    }
+    write(fd, buffer, 5);
+    old_buffer[1] = buffer[1];
+    old_buffer[2] = buffer[4];
+    old_buffer[3] = buffer[3];
+    old_buffer[4] = buffer[2];
     delay(INTERVAL);    // delay loop for INTERVAL miliseconds
     return res; // res = -1 for intersection, 0 for rest
+    
 }
 
-int makeTurn(int fd, int decision) {//left = 0, right = 1, uturn= 2
-        int tracking = 0;
-        int turn_count = 0; 
-        while (1){
-                buffer[0] = 0x01;
-            if (decision == 0){
-                buffer[1] = 0;
-                buffer[2] = 150;
-                buffer[3] = 1;
-                buffer[4] = 150;
-            }
-            else if(decision == 1){
-                buffer[1] = 1;
-                buffer[2] = 150;
-                buffer[3] = 0;
-                buffer[4] = 150;
-            }
-            else{
-                buffer[1] = 1;
-                buffer[2] = 100;
-                buffer[3] = 0;
-                buffer[4] = 100;
+int makeTurn(int fd, int decision) { //left = 0, up = 1, left = 2, uturn= 3
+    int tracking = 0;
+    int turn_count = 0;
+    int real_turn = 0; 
+    char buffer[] = {0x01, 1, 200, 1, 200};
+    while (1){
+        switch(curr_pos.dir){
+            case 0:
+                real_turn = (decision + 1) % 4;
+            case 1:
+                real_turn = decision;
+            case 2:
+                real_turn = (decision + 3) % 4;
+            case 3:
+                real_turn = (decision + 2) % 4;
+        }
+        if (real_turn == 0){
+            buffer[1] = 0;
+            buffer[2] = 70;
+            buffer[3] = 1;
+            buffer[4] = 70;
+        }
+        else if(real_turn == 2){
+            buffer[1] = 1;
+            buffer[2] = 70;
+            buffer[3] = 0;
+            buffer[4] = 70;
+        }
+        else{
+            buffer[1] = 1;
+            buffer[2] = 80;
+            buffer[3] = 0;
+            buffer[4] = 80;
 
+        }
+        if (real_turn != 2){
+            tracking = getTraceInfo(fd);
+            if ((tracking != 0b1111) &&turn_count>60){//150-20
+                printf("turn_count :%d",turn_count);
+                break;
             }
-            if (decision != 2){
-                tracking = getTraceInfo(fd);
-                if (tracking != 0b1111 &&turn_count>50){
-                    break;
-                }
-                write(fd, buffer, 5);
-                delay(INTERVAL);
-                turn_count ++;
-                if(turn_count > 200){
-                    printf("kill!!!!!!!!!!!!!1");
-                    return tracking;
-                }
-            }
-            else{
-                tracking = getTraceInfo(fd);
-                if (tracking != 0b1111 &&turn_count>150){
-                    break;
-                }
-                write(fd, buffer, 5);
-                delay(INTERVAL);
-                turn_count ++;
-                if(turn_count > 400){
-                    printf("kill!!!!!!!!!!!!!1");
-                    return tracking;
-                }
-
+            write(fd, buffer, 5);
+            delay(5);
+            turn_count ++;
+            printf(">>> turning\n");
+            if(turn_count > 200){//150-80
+                printf("kill!!!!!!!!!!!!");
+                return tracking;
             }
         }
-        return tracking;
-    }
+        else{
+            tracking = getTraceInfo(fd);
+            if (tracking != 0b1111 &&turn_count>180){
+                printf("turn_count :%d",turn_count);
+                break;
+            }
+            write(fd, buffer, 5);
+            delay(5);
+            turn_count ++;
+            printf(">>> turning\n");
+            if(turn_count > 400){
+                printf("kill!!!!!!!!!!!!!1");
+                return tracking;
+            }
 
+        }
+    }
+    return tracking;
+}
 void updateCoord() {
     // 현재 위치와 방향에 따라 좌표를 업데이트
     // @minseok: check if it's properly done.
