@@ -8,13 +8,20 @@
 #include <wiringPi.h>
 #include <wiringPiI2C.h>
 
+
+
+#include <stdbool.h>
+#include <limits.h>
+
 #include "server.h"
 
+
+
 // 모터 제어 함수들은 이 파일에 정의
-#include "qr.h" // QR코드 인식 함수들은 이 파일에 정의
+// #include <qr.cpp>   // QR코드 인식 함수들은 이 파일에 정의
 #define DEVICE_ID 0x16      // <- I2C device ID. This is the ID of connection.
 
-#define INTERVAL 5         // <- Interval time for each loop. unit: ms(miliseconds)
+#define INTERVAL 20         // <- Interval time for each loop. unit: ms(miliseconds)
 #define DURATION 6          // <- While loop duration. after (DURATION) seconds, the loop terminates. unit: seconds
 #define INPUT 0
 
@@ -25,8 +32,7 @@ struct position {
 };
 
 struct position curr_pos = {0, 0, 0};
-// struct position oppo_pos = {0, 0, 0};
-int player;
+struct position oppo_pos = {0, 0, 0};
 
 int gpio_init() {
     // uses BCM numbering of the GPIOs and directly accesses the GPIO registers.
@@ -55,82 +61,25 @@ int gpio_init() {
     return fd;
 }
 
-// Print the map
-void printRcvd(void* arg) {
-    DGIST* dgist = (DGIST*)arg;
-    Item tmpItem;
-
-	printf("\n\n===========MAP===========\n");
-    sem_wait(&mapLock);
-	for (int i = 0; i < MAP_ROW; i++) {
-        printf("\t");
-		for (int j = 0; j < MAP_COL; j++) {
-            tmpItem = (dgist->map[i][j]).item;
-            switch (tmpItem.status) {
-                case nothing:
-                    printf("- ");
-                    break;
-                case item:
-                    printf("%d ", tmpItem.score);
-                    break;
-                case trap:
-                    printf("x ");
-                    break;
-            }
-        }
-        printf("\n");
-    }
-    sem_post(&mapLock);
-	client_info client;
-	for(int i=0; i < MAX_CLIENTS; i++){
-		client = dgist->players[i];
-		printf("[Player %d]   ",i+1);
-		printf("(%d,%d)\t",client.row, client.col);
-		printf("Score: %d\t",client.score);
-		printf("Bomb: %d\n",client.bomb);
-	}
-}
-
 /* SOCKET - SERVER PART */
-void* sockListener(void* arg) {
-    DGIST* dgist = (DGIST*)arg;
-    int client_socket = dgist->players[0].socket;
-
-    while(1) {
-        if (read(client_socket, dgist, sizeof(DGIST)) == 0) {
-            perror("Error reading from server");
-            exit(-1);
-        }
-        printRcvd(dgist);
-    }
-
-    return NULL;
+int socket_init(int port) {
+    // Initialize Socket connection with server
+    printf("Socket setup Completed. %d\n", port);
+    return port;
 }
 
-int sendSVR(int sock, int decision){
-    ClientAction trapPos;
-    trapPos.col = curr_pos.x;
-    trapPos.row = curr_pos.y;
-    trapPos.action = decision == -1 ? setBomb : move;
-    if (send(client_socket, $decided_action, sizeof(ClientAction), 0) < 0){
-        perror("Error sending to server");
-        return -1;
-    }
-    if (decision == -1) {
-        printf("Trap set at (%d, %d)\n", curr_pos.x, curr_pos.y);
-    } else {
-        printf("Position at (%d, %d)\n", curr_pos.x, curr_pos.y);
-    }
+int sendSVR(int sock, int decision, int trap_decision){
+    // @leeminki02
     return 0;
 }
 
 int readQR() {
     // 강규영
-    
     // QR 코드 인식 함수
-    return qr_detector();
+    return 0;
 }
 
+// dooraemee0: include 같은건 추가해야함
 int getTraceInfo(int fd) { 
     int tracking = digitalRead(27) << 3 | digitalRead(22) << 2 | digitalRead(17) << 1 | digitalRead(4);
     /* ===================================================
@@ -157,124 +106,109 @@ int getTraceInfo(int fd) {
     return tracking;
 }
 
-char buffer[5] = {0x01, 1, 200, 1, 200};
-char old_buffer[5] = {0x01, 1, 200, 1, 200};
+char buf_go[5] = {0x01, 1, 200, 1, 200};
 char buf_stop[2] = {0x02, 0};
-int lineout_counter = 0;
 
-int traceLine(int fd, int tracking, int shift) { //no shift = 0, robot left shift = 1, robot right shift = 2
-    if (tracking == 0b1111){
-            lineout_counter++;
-        }
-        else{
-            lineout_counter = 0;
-        }
-        buffer[0] = 0x01;
-        int res = 0;
-        if (tracking == 0|| tracking == 1||tracking == 2||tracking == 4||tracking == 8||tracking == 10||tracking == 5||tracking == 6){ //0000 0001 0010 0100 1000 1010 0101 0110
-            res = -1;
-            printf(">>> INTERSECTION :[%d]\n", tracking);
-            // TODO: find which way to go here.
-        }
-        else if (tracking == 13 || tracking == 12 || tracking == 14) { //1101 1100 1110
-            // turn right
-            buffer[1] = 1;
-            buffer[2] = 90;
-            buffer[3] = 1;
-            buffer[4] = 50;
-            printf(">>> slight RIGHT\n");
-        } else if (tracking == 11||tracking == 3 ||tracking == 7 ) { //1011 0011 0111
-            // turn left
-            buffer[1] = 1;
-            buffer[2] = 50;
-            buffer[3] = 1;
-            buffer[4] = 90;
-            printf(">>> slight LEFT\n");
-        } else if (tracking == 15 && lineout_counter<250) { //1111
-            buffer[1] = old_buffer[1];
-            buffer[2] = old_buffer[2];
-            buffer[3] = old_buffer[3];
-            buffer[4] = old_buffer[4];
-            printf(">>> lineout : go\n");
-        }
-        else if (tracking == 15){ //1111
-            buffer[1] = 0;
-            buffer[2] = 40;
-            buffer[3] = 0;
-            buffer[4] = 40;
-            printf(">>> line out : BACK\n");
-        }
-        else if (tracking == 9) {//1001
-            // go straight
-            buffer[1] = 1;
-            buffer[2] = 80;
-            buffer[3] = 1;
-            buffer[4] = 80;
-            printf(">>> STRAIGHT\n");
-        }   
-        write(fd, buffer, 5);
-        old_buffer[1] = buffer[1];
-        old_buffer[2] = buffer[4];
-        old_buffer[3] = buffer[3];
-        old_buffer[4] = buffer[2];
+int traceLine(int fd, int tracked, int speed) {
+    if (tracked == 13) {
+        // turn right
+        buf_go[1] = 1;
+        buf_go[2] = 100;
+        buf_go[3] = 1;
+        buf_go[4] = 30;
+        printf(">>> slight RIGHT\n");
+    } else if (tracked == 11) {
+        // turn left
+        buf_go[1] = 1;
+        buf_go[2] = 30;
+        buf_go[3] = 1;
+        buf_go[4] = 100;
+        printf(">>> slight LEFT\n");
+    } else if (tracked == 15) {
+        buf_go[1] = 0;
+        buf_go[2] = 100 / 2;
+        buf_go[3] = 0;
+        buf_go[4] = 100 / 2;
+        printf(">>> BACK\n");
+    } else if (tracked == 0b1001) {
+        buf_go[1] = 1;
+        buf_go[2] = 100;
+        buf_go[3] = 1;
+        buf_go[4] = 100;
+    } else if (tracked == 0b1000 || tracked == 0b0000 || tracked == 0b0001) {
+        // This means that tracker have detected a intersection
+        printf(">>> Intersection detected\n");
+        return -1;
+    } else {
+        printf(">>> Invalid tracking value\n");
+        return -1;
+    }
+    int res = write(fd, buf_go, 5);
     delay(INTERVAL);    // delay loop for INTERVAL miliseconds
-    return res; // res = -1 for intersection, 0 for rest
+    return res; // 비정상 종료시 -1, 나먨지 숫자 반환시 정상적으로 전송된 것.
 }
 
-int makeTurn(int fd, int decision) {//left = 0, right = 1, uturn= 2
-        int tracking = 0;
-        int turn_count = 0; 
-        while (1){
-                buffer[0] = 0x01;
-            if (decision == 0){
-                buffer[1] = 0;
-                buffer[2] = 150;
-                buffer[3] = 1;
-                buffer[4] = 150;
-            }
-            else if(decision == 1){
-                buffer[1] = 1;
-                buffer[2] = 150;
-                buffer[3] = 0;
-                buffer[4] = 150;
-            }
-            else{
-                buffer[1] = 1;
-                buffer[2] = 100;
-                buffer[3] = 0;
-                buffer[4] = 100;
-
-            }
-            if (decision != 2){
-                tracking = getTraceInfo(fd);
-                if (tracking != 0b1111 &&turn_count>50){
+int makeTurn(int fd, int decision) {
+    // FIXME: implement using the while loop to make sure it moves precisely.
+    int traceInfo;
+    switch (decision) {
+        case 0: // straight
+            break;
+        case 1: // left
+            printf("LEFT\n");
+            buf_go[1] = 0;
+            buf_go[2] = 0; // 왼쪽 속도 감소
+            buf_go[3] = 1;
+            buf_go[4] = 100;
+            while(1) {
+                write(fd, buf_go, 5);
+                delay(10);
+                traceInfo = getTraceInfo(fd);
+                if (traceInfo != 0b1111) {
                     break;
                 }
-                write(fd, buffer, 5);
-                delay(INTERVAL);
-                turn_count ++;
-                if(turn_count > 200){
-                    printf("kill!!!!!!!!!!!!!1");
-                    return tracking;
-                }
             }
-            else{
-                tracking = getTraceInfo(fd);
-                if (tracking != 0b1111 &&turn_count>150){
+            break;
+        case 2: // U-turn
+            printf("U-Turn\n");
+            buf_go[1] = 0;
+            buf_go[2] = 100;
+            buf_go[3] = 1;
+            buf_go[4] = 100;
+            int tracecounter = 0;
+            while(1) {
+                write(fd, buf_go, 5);
+                delay(25);
+                traceInfo = getTraceInfo(fd);
+                if (traceInfo == 0b1000 || traceInfo == 0b0000 || traceInfo == 0b0001 || traceInfo == 0b1001) {
+                    tracecounter++;
+                }
+                if (tracecounter == 2) break;
+            }
+            break;
+        case 3: // right
+            printf("RIGHT\n");
+            buf_go[1] = 1;
+            buf_go[2] = 100;
+            buf_go[3] = 0;
+            buf_go[4] = 0; // 오른쪽 속도 감소
+            while(1) {
+                write(fd, buf_go, 5);
+                delay(25);
+                traceInfo = getTraceInfo(fd);
+                if (traceInfo == 0b1000 || traceInfo == 0b0000 || traceInfo == 0b0001 || traceInfo == 0b1001) {
                     break;
                 }
-                write(fd, buffer, 5);
-                delay(INTERVAL);
-                turn_count ++;
-                if(turn_count > 400){
-                    printf("kill!!!!!!!!!!!!!1");
-                    return tracking;
-                }
-
             }
-        }
-        return tracking;
+            break;
+        default:
+            printf("Invalid decision value\n");
+            return -1;
     }
+    int res = write(fd, buf_go, 5);
+    delay(INTERVAL);    // delay loop for INTERVAL miliseconds
+    return res; // 비정상 종료시 -1, 나머지 숫자 반환시 정상적으로 전송된 것.
+}
 
 void updateCoord() {
     // 현재 위치와 방향에 따라 좌표를 업데이트
@@ -297,14 +231,29 @@ void updateCoord() {
             break;
     }
 
-    // // 좌표가 범위를 벗어나지 않도록 확인
-    // if (curr_pos.x < -1) curr_pos.x =-1;
-    // if (curr_pos.x >  5) curr_pos.x = 5;
-    // if (curr_pos.y <  0) curr_pos.y = 0;
-    // if (curr_pos.y >  4) curr_pos.y = 4;
+    // 좌표가 범위를 벗어나지 않도록 확인
+    if (curr_pos.x <-1) curr_pos.x =-1;
+    if (curr_pos.x > 5) curr_pos.x = 5;
+    if (curr_pos.y < 0) curr_pos.y = 0;
+    if (curr_pos.y > 4) curr_pos.y = 4;
 
     printf("Updated position: (%d, %d, %d)\n", curr_pos.x, curr_pos.y, curr_pos.dir);
 }
+//-----------------------------------minseok작성
+typedef struct {
+    int x, y;
+} Point;
+
+typedef struct {
+    Point location;
+    int score;
+} Item;
+
+int manhattanDistance(Point a, Point b) {
+    return abs(a.x - b.x) + abs(a.y - b.y);
+}
+
+#define GRID_SIZE 5
 
 
 int decide_loc(int tracked, DGIST receivedData, struct position curr_pos) {
@@ -354,62 +303,49 @@ int decide_loc(int tracked, DGIST receivedData, struct position curr_pos) {
 
 int decision_trap(int tracked, DGIST receivedData, struct position curr_pos) {
     // 상대 플레이어 위치 확인
-    int oppo_row = receivedData.players[1-player].row; // 0번 플레이어가 우리라고 가정
-    int oppo_col = receivedData.players[1-player].col;
+    int oppo_row = receivedData.players[1].row; // 0번 플레이어가 우리라고 가정
+    int oppo_col = receivedData.players[1].col;
     oppo_pos.x = oppo_row;
     oppo_pos.y = oppo_col;
     // 현재 위치와 상대 플레이어 위치의 맨해튼 거리 계산
     int distance = abs(curr_pos.x - oppo_row) + abs(curr_pos.y - oppo_col);
 
     // 상대 플레이어가 1칸 이내에 있고, 남은 함정 개수가 1개 이상인 경우
-    if (distance <= 1 && receivedData.players[player].bomb > 0) {
+    if (distance <= 1 && receivedData.players[0].bomb > 0) {
         return 1; // 함정 설치
     } else {
         return 0; // 함정 설치 안 함
     }
 }
-
+//--------------------------------------------------여기까지 작성
 int main(int argc, char *argv[]){
     /*    USER INPUT    */
     // get the port number from user -> portNo
-    // get the starting position from user as 0 or 1 -> player
+    // get the starting position from user as 0 or 1 -> startP
     // get the first coordinate from argument
-    if (argc != 3) {
-        printf("Usage: %s <server_ip> <server_port> <startPosition: 0/1>\n", argv[0]);
-        exit(-1);
+    if (argc == 1) {
+        printf("No arguments provided.\n");
+    } else {
+        printf("Total arguments passed: %d\n", argc - 1); 
+        for (int i = 1; i < argc; i++) {
+            printf("Argument %d: %s\n", i, argv[i]);
+        }
     }
-    int portNo = atoi(argv[2]);
-    player = atoi(argv[3]);
+    int portNo = atoi(argv[1]);
+    int startP = atoi(argv[2]);
 
     /*     INITIAL CONFIG    */
-    int client_socket;
-    struct sockaddr_in server_addr;
-    pthread_t tid;
-
-    client_socket = socket(AF_INET, SOCK_STREAM, 0);
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(portNo);
-    inet_pton(AF_INET, argv[1], &server_addr.sin_addr);
-    if (connect(client_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
-        perror("Error connecting to server\n");
-        exit(-1);
-    }
-
-    DGIST dgist;
-    dgist.players[0].socket = client_socket;
-
-    pthread_create(&tid, NULL, sockListener, &dgist);
-
+    int sock = socket_init(portNo);
     int fd = gpio_init();
     /* DECLARE VARIABLES */
     int speed = 200;
-    int decision_pos, trap_decision;
+    int decision;
 
-    if (player == 0) {
+    if (startP == 0) {
         curr_pos.x = -1;
         curr_pos.y = 0;
         curr_pos.dir = 0;
-    } else if (player == 1) {
+    } else if (startP == 1) {
         curr_pos.x = 5;
         curr_pos.y = 4;
         curr_pos.dir = 2;
@@ -417,7 +353,7 @@ int main(int argc, char *argv[]){
         printf("Invalid argument\n");
         return -1;
     }
-    printf("[INIT] position: %d (%d, %d, %d)\n", player, curr_pos.x, curr_pos.y, curr_pos.dir);
+    printf("[INIT] position: %d (%d, %d, %d)\n", startP, curr_pos.x, curr_pos.y, curr_pos.dir);
 
     if (fd == -1 || sock == -1) {
         printf("Error: initialization failed: fd[%d], sock[%d]\n", fd, sock);
@@ -435,16 +371,26 @@ int main(int argc, char *argv[]){
         // default: trace the line until a new intersection is detected
         // if intersection is detected (or QR is detected)
         int trace = traceLine(fd, tracked, speed);
+
+//------------------------------------------------------------  minseok작성
+        
+        DGIST receivedData; //server.h에서 dgist struct받아왔다고 가정 - @Minkilee 작성, 수정 필요
+
+
         if (trace == -1) {
             // when the bot arrives at an intersection
             // 1. update the current position
             // 2. make a decision here
             // 3. turn the bot. when the rotation is complete, then get back to loop
             updateCoord();
-            decision_dir = decide_loc(tracked, curr_pos);
-            trap_decision = decision_trap(tracked, receivedData, curr_pos);
-            int sockRes = sendSVR(sock, trap_decision, curr_pos);             // send the decision to the server
-            int turnRes = makeTurn(fd, decision_dir);
+            decision = decide_loc(tracked, receivedData, curr_pos); // DGIST구조체의 map정보와 현재좌표를 인자로 전달
+            // decision_lok은 방향 0, 1, 2, 3 중 하나를 return
+            int trap_decision;
+            trap_decision = decision_trap(tracked,receivedData, curr_pos);
+            // decision_trap은 1:trap 설치, 0: 설치 안함 을 반환
+//------------------------------------------------------------여기까지
+            int sockRes = sendSVR(sock, decision, trap_decision);             // send the decision to the server
+            int turnRes = makeTurn(fd, decision);
         }
 
         /*     loop control     */

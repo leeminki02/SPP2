@@ -45,7 +45,7 @@ void printRcvd(void* arg) {
 	}
 }
 
-void* listener(void* arg) {
+void* sockListener(void* arg) {
     DGIST* dgist = (DGIST*)arg;
     int client_socket = dgist->players[0].socket;
 
@@ -84,7 +84,7 @@ int main(int argc, char *argv[]) {
     DGIST dgist;
     dgist.players[0].socket = client_socket;
 
-    pthread_create(&tid, NULL, listener, &dgist);
+    pthread_create(&tid, NULL, sockListener, &dgist);
 
     ClientAction action;
     action.row = -1;
