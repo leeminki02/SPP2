@@ -9,11 +9,12 @@
 #include <wiringPiI2C.h>
 
 #include "server.h"
+sem_t mapLock;
 
 // 모터 제어 함수들은 이 파일에 정의
 #include "qr.h" // QR코드 인식 함수들은 이 파일에 정의
 #define DEVICE_ID 0x16      // <- I2C device ID. This is the ID of connection.
-
+#define GRID_SIZE 5
 #define INTERVAL 5         // <- Interval time for each loop. unit: ms(miliseconds)
 #define DURATION 6          // <- While loop duration. after (DURATION) seconds, the loop terminates. unit: seconds
 #define INPUT 0
@@ -27,6 +28,20 @@ struct position {
 struct position curr_pos = {0, 0, 0};
 // struct position oppo_pos = {0, 0, 0};
 int player;
+struct DGIST receivedData;
+
+typedef struct {
+    int x, y;
+} Point;
+
+typedef struct {
+    Point location;
+    int score;
+} Item;
+
+int manhattanDistance(Point a, Point b) {
+    return abs(a.x - b.x) + abs(a.y - b.y);
+}
 
 int gpio_init() {
     // uses BCM numbering of the GPIOs and directly accesses the GPIO registers.
@@ -60,6 +75,7 @@ void printRcvd(void* arg) {
     DGIST* dgist = (DGIST*)arg;
     Item tmpItem;
 
+    // DEBUG: seriously, this is just for debugging, so make sure you delete them.
 	printf("\n\n===========MAP===========\n");
     sem_wait(&mapLock);
 	for (int i = 0; i < MAP_ROW; i++) {
@@ -81,6 +97,8 @@ void printRcvd(void* arg) {
         printf("\n");
     }
     sem_post(&mapLock);
+
+
 	client_info client;
 	for(int i=0; i < MAX_CLIENTS; i++){
 		client = dgist->players[i];
@@ -101,6 +119,7 @@ void* sockListener(void* arg) {
             perror("Error reading from server");
             exit(-1);
         }
+        receivedData = *dgist;
         printRcvd(dgist);
     }
 
@@ -108,11 +127,11 @@ void* sockListener(void* arg) {
 }
 
 int sendSVR(int sock, int decision){
-    ClientAction trapPos;
-    trapPos.col = curr_pos.x;
-    trapPos.row = curr_pos.y;
-    trapPos.action = decision == -1 ? setBomb : move;
-    if (send(client_socket, $decided_action, sizeof(ClientAction), 0) < 0){
+    ClientAction action_decision;
+    action_decision.col = curr_pos.x;
+    action_decision.row = curr_pos.y;
+    action_decision.action = decision == -1 ? setBomb : move;
+    if (send(sock, action_decision, sizeof(ClientAction), 0) < 0){
         perror("Error sending to server");
         return -1;
     }
@@ -221,24 +240,27 @@ int traceLine(int fd, int tracking, int shift) { //no shift = 0, robot left shif
     return res; // res = -1 for intersection, 0 for rest
 }
 
-int makeTurn(int fd, int decision) {//left = 0, right = 1, uturn= 2
+int makeTurn(int fd, int decision) 
+    {
+        // 0: left, 1: up, 2: right, 3: down 절대 좌표 기준.
+        // curr_pos.dir -> left - left: go straight: 무시, left - right: back, 
         int tracking = 0;
         int turn_count = 0; 
         while (1){
                 buffer[0] = 0x01;
-            if (decision == 0){
+            if (decision == 0){ // left turn
                 buffer[1] = 0;
                 buffer[2] = 150;
                 buffer[3] = 1;
                 buffer[4] = 150;
             }
-            else if(decision == 1){
+            else if(decision == 1){ // right turn
                 buffer[1] = 1;
                 buffer[2] = 150;
                 buffer[3] = 0;
                 buffer[4] = 150;
             }
-            else{
+            else{ // back
                 buffer[1] = 1;
                 buffer[2] = 100;
                 buffer[3] = 0;
@@ -306,7 +328,6 @@ void updateCoord() {
     printf("Updated position: (%d, %d, %d)\n", curr_pos.x, curr_pos.y, curr_pos.dir);
 }
 
-
 int decide_loc(int tracked, DGIST receivedData, struct position curr_pos) {
     // @minseok
     int location = 0;
@@ -315,15 +336,15 @@ int decide_loc(int tracked, DGIST receivedData, struct position curr_pos) {
     bestItem.location.x = -1;
     bestItem.location.y = -1;
     
-    int minDistance = INT_MAX;
+    int minDistance = 65535;
     // 모든 좌표 탐색하여 가장 가까운 아이템 중 가장 크기가 큰 아이템을 best 아이템으로 선정
     for (int x = 0; x < GRID_SIZE; x++) {
         for (int y = 0; y < GRID_SIZE; y++) {
             if (receivedData.map[x][y].item.status == item) {
                 int distance = manhattanDistance((Point){curr_pos.x, curr_pos.y}, (Point){x, y});
-                if (distance < minDistance || (distance == minDistance && gameState->items[x][y] > bestItem.score)) {
+                if (distance < minDistance || (distance == minDistance && receivedData.map[x][y].item.score > bestItem.score)) {
                     minDistance = distance;
-                    bestItem.score = gameState->items[x][y];
+                    bestItem.score = receivedData.map[x][y].item.score;
                     bestItem.location = (Point){x, y};
                 }
             }
@@ -345,9 +366,18 @@ int decide_loc(int tracked, DGIST receivedData, struct position curr_pos) {
     }
 
     // 함정을 피할 수 없는 경우 랜덤하게 이동
-    return rand() % 4;
+    // return rand() % 4;
+        // 0: right, 1: up, 2: left, 3: down
+    if (curr_pos.x + 1 <= 4) {
+        return 0;
+    } else if (curr_pos.y + 1 <= 4) {
+        return 1;
+    } else if (curr_pos.x - 1 >= 0) {
+        return 2;
+    } else if (curr_pos.y - 1 >= 0) {
+        return 3;
+    }
     
-    // set the next decision value: straight, left, right, back
     // return the value of the decision
     // 0: straight, 1: left, 2: down, 3: right
 }
@@ -419,8 +449,8 @@ int main(int argc, char *argv[]){
     }
     printf("[INIT] position: %d (%d, %d, %d)\n", player, curr_pos.x, curr_pos.y, curr_pos.dir);
 
-    if (fd == -1 || sock == -1) {
-        printf("Error: initialization failed: fd[%d], sock[%d]\n", fd, sock);
+    if (fd == -1) {
+        printf("Error: GPIO initialization failed: fd[%d]\n", fd);
         return -1;
     }
     printf("[INIT] GPIO:    %d\n", fd);
@@ -443,7 +473,7 @@ int main(int argc, char *argv[]){
             updateCoord();
             decision_dir = decide_loc(tracked, curr_pos);
             trap_decision = decision_trap(tracked, receivedData, curr_pos);
-            int sockRes = sendSVR(sock, trap_decision, curr_pos);             // send the decision to the server
+            int sockRes = sendSVR(client_socket, trap_decision, curr_pos);             // send the decision to the server
             int turnRes = makeTurn(fd, decision_dir);
         }
 
