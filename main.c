@@ -37,7 +37,7 @@ typedef struct {
 typedef struct {
     Point location;
     int score;
-} Item;
+} Item_val;
 
 int manhattanDistance(Point a, Point b) {
     return abs(a.x - b.x) + abs(a.y - b.y);
@@ -126,11 +126,39 @@ void* sockListener(void* arg) {
     return NULL;
 }
 
-int sendSVR(int sock, int decision){
+int sendSVR(int sock, int decision, int dec_trap){
     ClientAction action_decision;
     action_decision.col = curr_pos.x;
     action_decision.row = curr_pos.y;
-    action_decision.action = decision == -1 ? setBomb : move;
+    printf("Decision: %d\n", decision);
+    printf("Trap: %d\n", dec_trap);
+    switch(decision) {
+        case 0:
+            action.row = action.row + 1;
+            action.col = action.col;
+            break;
+        case 1:
+            action.row = action.row;
+            action.col = action.col + 1;
+            break;
+        case 2:
+            action.row = action.row - 1;
+            action.col = action.col;
+            break;
+        case 3:
+            action.row = action.row;
+            action.col = action.col - 1;
+            break;
+    }
+    switch(dec_trap){
+        case 0:
+            action.action = move;
+            break;
+        case 1:
+            action.action = setBomb;
+            break;
+    }
+
     if (send(sock, action_decision, sizeof(ClientAction), 0) < 0){
         perror("Error sending to server");
         return -1;
@@ -471,16 +499,19 @@ void updateCoord() {
     printf("Updated position: (%d, %d, %d)\n", curr_pos.x, curr_pos.y, curr_pos.dir);
 }
 
-int decide_loc(int tracked, DGIST receivedData, struct position curr_pos) {
+
+int decide_loc(int tracked, DGIST receivedData) {
     // @minseok
+    struct position curr_pos = {receivedData.players[player].row, receivedData.players[player].col, 0};
     int location = 0;
-    Item bestItem;
+    Item_val bestItem;
     bestItem.score = 0;
     bestItem.location.x = -1;
     bestItem.location.y = -1;
     
     int minDistance = 65535;
     // 모든 좌표 탐색하여 가장 가까운 아이템 중 가장 크기가 큰 아이템을 best 아이템으로 선정
+
     for (int x = 0; x < GRID_SIZE; x++) {
         for (int y = 0; y < GRID_SIZE; y++) {
             if (receivedData.map[x][y].item.status == item) {
@@ -493,31 +524,41 @@ int decide_loc(int tracked, DGIST receivedData, struct position curr_pos) {
             }
         }
     }
-    // 가로 방향으로 우선적으로 이동한다. 이동하려는 방향의 item이 trap이 아닌 경우
-    // 가로 방향 우선 탐색
-    if (bestItem.location.x > curr_pos.x && receivedData.map[curr_pos.x + 1][curr_pos.y].item.status != trap) {
-        return 0; // 오른쪽으로 이동
-    } else if (bestItem.location.x < curr_pos.x && receivedData.map[curr_pos.x - 1][curr_pos.y].item.status != trap) {
-        return 2; // 왼쪽으로 이동
-    }
 
-    // 세로 방향 탐색
-    if (bestItem.location.y > curr_pos.y && receivedData.map[curr_pos.x][curr_pos.y + 1].item.status != trap) {
-        return 1; // 위쪽으로 이동
-    } else if (bestItem.location.y < curr_pos.y && receivedData.map[curr_pos.x][curr_pos.y - 1].item.status != trap) {
-        return 3; // 아래쪽으로 이동
-    }
+    if (bestItem.location.x != -1 && bestItem.location.y != -1) {
+        // 가로 방향으로 우선적으로 이동한다. 이동하려는 방향의 item이 trap이 아닌 경우
+        // 가로 방향 우선 탐색
+        if (bestItem.location.x > curr_pos.x 
+                && receivedData.map[curr_pos.x + 1][curr_pos.y].item.status != trap) {
+            printf("BestItem(%d, %d) Decision 0\n", bestItem.location.x, bestItem.location.y);
+            return 0; // 오른쪽으로 이동
+        } else if (bestItem.location.x < curr_pos.x 
+                && receivedData.map[curr_pos.x - 1][curr_pos.y].item.status != trap) {
+            printf("BestItem(%d, %d) Decision 2\n", bestItem.location.x, bestItem.location.y);
+            return 2; // 왼쪽으로 이동
+        }
 
-    // 함정을 피할 수 없는 경우 랜덤하게 이동
-    // return rand() % 4;
+        // 세로 방향 탐색
+        if (bestItem.location.y > curr_pos.y 
+                && receivedData.map[curr_pos.x][curr_pos.y + 1].item.status != trap) {
+            printf("BestItem(%d, %d) Decision 1\n", bestItem.location.x, bestItem.location.y);
+            return 1; // 위쪽으로 이동
+        } else if (bestItem.location.y < curr_pos.y 
+                && receivedData.map[curr_pos.x][curr_pos.y - 1].item.status != trap) {
+            printf("BestItem(%d, %d) Decision 3\n", bestItem.location.x, bestItem.location.y);
+            return 3; // 아래쪽으로 이동
+        }
+
+    }
+    // 함정을 피할 수 없는 경우 
         // 0: right, 1: up, 2: left, 3: down
-    if (curr_pos.x + 1 <= 4) {
+    if (curr_pos.x + 1 <= 4 && receivedData.map[curr_pos.x + 1][curr_pos.y].item.status != trap) {
         return 0;
-    } else if (curr_pos.y + 1 <= 4) {
+    } else if (curr_pos.y + 1 <= 4 && receivedData.map[curr_pos.x][curr_pos.y + 1].item.status != trap) {
         return 1;
-    } else if (curr_pos.x - 1 >= 0) {
+    } else if (curr_pos.x - 1 >= 0 && receivedData.map[curr_pos.x - 1][curr_pos.y].item.status != trap) {
         return 2;
-    } else if (curr_pos.y - 1 >= 0) {
+    } else{
         return 3;
     }
     
@@ -525,14 +566,12 @@ int decide_loc(int tracked, DGIST receivedData, struct position curr_pos) {
     // 0: straight, 1: left, 2: down, 3: right
 }
 
-int decision_trap(int tracked, DGIST receivedData, struct position curr_pos) {
+int decision_trap(int tracked, DGIST receivedData) {
     // 상대 플레이어 위치 확인
     int oppo_row = receivedData.players[1-player].row; // 0번 플레이어가 우리라고 가정
     int oppo_col = receivedData.players[1-player].col;
-    oppo_pos.x = oppo_row;
-    oppo_pos.y = oppo_col;
     // 현재 위치와 상대 플레이어 위치의 맨해튼 거리 계산
-    int distance = abs(curr_pos.x - oppo_row) + abs(curr_pos.y - oppo_col);
+    int distance = abs(receivedData.players[player].row - oppo_row) + abs(receivedData.players[player].col - oppo_col);
 
     // 상대 플레이어가 1칸 이내에 있고, 남은 함정 개수가 1개 이상인 경우
     if (distance <= 1 && receivedData.players[player].bomb > 0) {
@@ -605,18 +644,21 @@ int main(int argc, char *argv[]){
         /*     loop body     */
         int tracked = getTraceInfo(fd);     // get tracing info get_tracing_info(fd);
         int qr = readQR();                  // read qr code
+        // TODO: check if the QR detection works properly
+        int qr_x = qr/10;
+        int qr_y = qr%10;
         // default: trace the line until a new intersection is detected
         // if intersection is detected (or QR is detected)
         int trace = traceLine(fd, tracked, speed);
         if (trace == -1) {
-            // when the bot arrives at an intersection
+            // when the bot arrives at an intersection -> TODO: check if the qr-condition would be okay.
             // 1. update the current position
             // 2. make a decision here
             // 3. turn the bot. when the rotation is complete, then get back to loop
             updateCoord();
-            decision_dir = decide_loc(tracked, curr_pos);
-            trap_decision = decision_trap(tracked, receivedData, curr_pos);
-            int sockRes = sendSVR(client_socket, trap_decision, curr_pos);             // send the decision to the server
+            trap_decision = decision_trap(tracked, receivedData);
+            int sockRes = sendSVR(client_socket, decision_dir, trap_decision);
+            decision_dir = decide_loc(tracked, receivedData);
             int turnRes = makeTurn(fd, decision_dir);
         }
 
@@ -635,6 +677,6 @@ int main(int argc, char *argv[]){
             break;
         }
     }
-
+    close(client_socket);
     return 0; // 정상 실행 종료.
 }
