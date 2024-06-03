@@ -145,6 +145,7 @@ int main(void)
     int old_tracking = 0b0;
     int runcounter = 0;
     int lineout_counter = 0;
+    int line_counter = 0;
     write(fd, buffer, 2);
     delay(100);
     int int_res;
@@ -183,13 +184,14 @@ int main(void)
         if (tracking != old_tracking)
         printf("tracking :%d",tracking);
 
-        if (tracking == 0|| tracking == 1||tracking == 2||tracking == 4||tracking == 8||tracking == 10||tracking == 5||tracking == 6){ //0000 0001 0010 0100 1000 1010 0101 0110
-            tracking = turn90(fd,1);
+        if (line_counter>40 && tracking == 7||tracking == 3||tracking == 0|| tracking == 1||tracking == 2||tracking == 4||tracking == 8||tracking == 10||tracking == 5||tracking == 6){ //0000 0001 0010 0100 1000 1010 0101 0110
+            tracking = turn90(fd,0);
             if (tracking != old_tracking)
             printf(">>> INTERSECTION :[%d]\n", tracking);
+            line_counter = 0;
             // TODO: find which way to go here.
         }
-        else if (tracking == 13 || tracking == 12) { //1101 1100
+        else if (tracking == 12) { //1101 1100
             // turn right
             buffer[1] = 1;
             buffer[2] = 100;
@@ -237,10 +239,10 @@ int main(void)
             if (tracking != old_tracking)
             printf(">>> line out : BACK\n");
         }
-        else if (tracking == 9) {//1001
+        else if (tracking == 13 ||tracking == 9) {//1001 1101
             // go straight
             buffer[1] = 1;
-            buffer[2] = 80;
+            buffer[2] = 70;
             buffer[3] = 1;
             buffer[4] = 80;
             if (tracking != old_tracking)
@@ -262,6 +264,7 @@ int main(void)
         old_buffer[3] = buffer[3];
         old_buffer[4] = buffer[2];
         runcounter++;
+        line_counter++;
         delay(5); // TODO: change the frequency as needed
     }
     return 0;
