@@ -16,7 +16,7 @@ sem_t mapLock;
 #define DEVICE_ID 0x16      // <- I2C device ID. This is the ID of connection.
 #define GRID_SIZE 5
 #define INTERVAL 5         // <- Interval time for each loop. unit: ms(miliseconds)
-#define DURATION 6          // <- While loop duration. after (DURATION) seconds, the loop terminates. unit: seconds
+#define DURATION 300          // <- While loop duration. after (DURATION) seconds, the loop terminates. unit: seconds
 #define INPUT 0
 
 struct position {
@@ -28,7 +28,7 @@ struct position {
 struct position curr_pos = {0, 0, 0};
 // struct position oppo_pos = {0, 0, 0};
 int player;
-struct DGIST receivedData;
+DGIST receivedData;
 
 typedef struct {
     int x, y;
@@ -75,28 +75,28 @@ void printRcvd(void* arg) {
     DGIST* dgist = (DGIST*)arg;
     Item tmpItem;
 
-    // DEBUG: seriously, this is just for debugging, so make sure you delete them.
-	printf("\n\n===========MAP===========\n");
-    sem_wait(&mapLock);
-	for (int i = 0; i < MAP_ROW; i++) {
-        printf("\t");
-		for (int j = 0; j < MAP_COL; j++) {
-            tmpItem = (dgist->map[i][j]).item;
-            switch (tmpItem.status) {
-                case nothing:
-                    printf("- ");
-                    break;
-                case item:
-                    printf("%d ", tmpItem.score);
-                    break;
-                case trap:
-                    printf("x ");
-                    break;
-            }
-        }
-        printf("\n");
-    }
-    sem_post(&mapLock);
+    // // DEBUG: seriously, this is just for debugging, so make sure you delete them.
+	// printf("\n\n===========MAP===========\n");
+    // sem_wait(&mapLock);
+	// for (int i = 0; i < MAP_ROW; i++) {
+    //     printf("\t");
+	// 	for (int j = 0; j < MAP_COL; j++) {
+    //         tmpItem = (dgist->map[i][j]).item;
+    //         switch (tmpItem.status) {
+    //             case nothing:
+    //                 printf("- ");
+    //                 break;
+    //             case item:
+    //                 printf("%d ", tmpItem.score);
+    //                 break;
+    //             case trap:
+    //                 printf("x ");
+    //                 break;
+    //         }
+    //     }
+    //     printf("\n");
+    // }
+    // sem_post(&mapLock);
 
 
 	client_info client;
@@ -112,44 +112,47 @@ void printRcvd(void* arg) {
 /* SOCKET - SERVER PART */
 void* sockListener(void* arg) {
     DGIST* dgist = (DGIST*)arg;
-    int client_socket = dgist->players[0].socket;
+    int client_socket = dgist->players[player].socket;
 
     while(1) {
         if (read(client_socket, dgist, sizeof(DGIST)) == 0) {
             perror("Error reading from server");
             exit(-1);
         }
-        receivedData = *dgist;
+        // struct DGIST rcvd = *dgist;
+
+        // int trap_decision = decision_trap(*dgist);
+        // int decision_dir = decide_loc(*dgist);
+        // int sockRes = sendSVR(client_socket, decision_dir, trap_decision);
         printRcvd(dgist);
     }
 
     return NULL;
 }
 
-int sendSVR(int sock, int decision, int dec_trap){
-    ClientAction action_decision;
-    action_decision.col = curr_pos.x;
-    action_decision.row = curr_pos.y;
-    printf("Decision: %d\n", decision);
-    printf("Trap: %d\n", dec_trap);
-    switch(decision) {
-        case 0:
-            action.row = action.row + 1;
-            action.col = action.col;
-            break;
-        case 1:
-            action.row = action.row;
-            action.col = action.col + 1;
-            break;
-        case 2:
-            action.row = action.row - 1;
-            action.col = action.col;
-            break;
-        case 3:
-            action.row = action.row;
-            action.col = action.col - 1;
-            break;
-    }
+int sendSVR_QR(int sock, int qr_x, int qr_y, int dec_trap){
+    ClientAction action;
+    action.row = qr_x;
+    action.col = qr_y;
+    //printf("Trap: %d\n", dec_trap);
+    // switch(decision) {
+    //     case 0:
+    //         action.row = action.row + 1;
+    //         action.col = action.col;
+    //         break;
+    //     case 1:
+    //         action.row = action.row;
+    //         action.col = action.col + 1;
+    //         break;
+    //     case 2:
+    //         action.row = action.row - 1;
+    //         action.col = action.col;
+    //         break;
+    //     case 3:
+    //         action.row = action.row;
+    //         action.col = action.col - 1;
+    //         break;
+    // }
     switch(dec_trap){
         case 0:
             action.action = move;
@@ -159,23 +162,24 @@ int sendSVR(int sock, int decision, int dec_trap){
             break;
     }
 
-    if (send(sock, action_decision, sizeof(ClientAction), 0) < 0){
+    if (send(sock, &action, sizeof(ClientAction), 0) < 0){
         perror("Error sending to server");
         return -1;
     }
-    if (decision == -1) {
-        printf("Trap set at (%d, %d)\n", curr_pos.x, curr_pos.y);
+    if (dec_trap == -1) {
+        printf("Trap set at (%d, %d)\n", qr_x, qr_y);
     } else {
-        printf("Position at (%d, %d)\n", curr_pos.x, curr_pos.y);
+        //printf("Position at (%d, %d)\n", qr_x, qr_y);
     }
     return 0;
 }
 
-int readQR() {
+void * readQR(int* arg) {
     // 강규영
     
     // QR 코드 인식 함수
-    return qr_detector();
+    qr_detector(arg);
+
 }
 
 int getTraceInfo(int fd) { 
@@ -190,305 +194,203 @@ int getTraceInfo(int fd) {
     DON'T BE CONFUSED:: 0 is detected, 1 is not detected!
     =================================================== */
     
-    printf("[tracking]: %d\tL*", tracking);
-    // if most significant bit is 0: print - else print " "
-    if ((tracking & 0b1000) == 0) {printf("-");} else {printf(" ");}
-    // if x0xx: print | else print " "
-    if ((tracking & 0b0100) == 0) {printf("|");} else {printf(" ");}
-    // if xx0x: print | else print " "
-    if ((tracking & 0b0010) == 0) {printf("|");} else {printf(" ");}
-    // if xxx0: print - else print " "
-    if ((tracking & 0b0001) == 0) {printf("-");} else {printf(" ");}
-    printf("*R \t");
+    // printf("[tracking]: %d\tL*", tracking);
+    // // if most significant bit is 0: print - else print " "
+    // if ((tracking & 0b1000) == 0) {printf("-");} else {printf(" ");}
+    // // if x0xx: print | else print " "
+    // if ((tracking & 0b0100) == 0) {printf("|");} else {printf(" ");}
+    // // if xx0x: print | else print " "
+    // if ((tracking & 0b0010) == 0) {printf("|");} else {printf(" ");}
+    // // if xxx0: print - else print " "
+    // if ((tracking & 0b0001) == 0) {printf("-");} else {printf(" ");}
+    // printf("*R \n");
     
     return tracking;
 }
 
-char buffer[5] = {0x01, 1, 200, 1, 200};
-char old_buffer[5] = {0x01, 1, 200, 1, 200};
+char buffer[5] = {0x01, 1, 10, 1, 10};
+char old_buffer[5] = {0x01, 1, 10, 1, 10};
 char buf_stop[2] = {0x02, 0};
 int lineout_counter = 0;
 int line_counter = 0;
 
 int traceLine(int fd, int tracking, int shift) { //no shift = 0, robot left shift = 1, robot right shift = 2
-    if (tracking == 0b1111){
-        lineout_counter++;
-    }
-    else{
-        lineout_counter = 0;
-    }
     buffer[0] = 0x01;
     int res = 0;
-    if(shift == 0){
-        if (tracking == 0|| tracking == 1||tracking == 2||tracking == 4||tracking == 8||tracking == 10||tracking == 5||tracking == 6){ //0000 0001 0010 0100 1000 1010 0101 0110
+        if (line_counter>400 && (tracking == 0|| tracking == 1||tracking == 2||tracking == 4||tracking == 8||tracking == 10||tracking == 5||tracking == 6||tracking == 14||tracking == 7)){ //0000 0001 0010 0100 1000 1010 0101 0110
             res = -1;
-            printf(">>> INTERSECTION :[%d]\n", tracking);
+            line_counter = 0;
         }
         else if (tracking == 13 || tracking == 12) { //1101 1100
             // turn right
             buffer[1] = 1;
-            buffer[2] = 100;
+            buffer[2] = 80;
             buffer[3] = 1;
             buffer[4] = 50;
-            printf(">>> slight RIGHT\n");
         } else if (tracking == 14) { // 1110
             // turn right
             buffer[1] = 1;
-            buffer[2] = 130;
+            buffer[2] = 100;
             buffer[3] = 1;
-            buffer[4] = 40;
-            printf(">>> big RIGHT\n");
+            buffer[4] = 20;
         } else if (tracking == 11||tracking == 3 ) { //1011 0011 
             // turn left
             buffer[1] = 1;
             buffer[2] = 50;
             buffer[3] = 1;
-            buffer[4] = 100;
-            printf(">>> slight LEFT\n");
+            buffer[4] = 80;
         } else if (tracking == 7 ) { // 0111
             // turn left
             buffer[1] = 1;
-            buffer[2] = 40;
+            buffer[2] = 20;
             buffer[3] = 1;
-            buffer[4] = 130;
-            printf(">>> big LEFT\n");
-        } else if (tracking == 15 && lineout_counter<250) { //1111
+            buffer[4] = 100;
+        } else if (tracking == 15 && lineout_counter<100) { //1111
             buffer[1] = old_buffer[1];
             buffer[2] = old_buffer[2];
             buffer[3] = old_buffer[3];
             buffer[4] = old_buffer[4];
-            printf(">>> lineout : go\n");
         }
         else if (tracking == 15){ //1111
             buffer[1] = 0;
             buffer[2] = 40;
             buffer[3] = 0;
             buffer[4] = 40;
-            printf(">>> line out : BACK\n");
         }
         else if (tracking == 9) {//1001
             // go straight
             buffer[1] = 1;
-            buffer[2] = 80;
-            buffer[3] = 1;
-            buffer[4] = 80;
-            printf(">>> STRAIGHT\n");
-        }   
-    }
-    else if(shift == 1){ // left shift
-        if (line_counter>40 && tracking == 7||tracking == 3||tracking == 0|| tracking == 1||tracking == 2||tracking == 4||tracking == 8||tracking == 10||tracking == 5||tracking == 6){ //0000 0001 0010 0100 1000 1010 0101 0110
-            res = -1;
-            printf(">>> INTERSECTION :[%d]\n", tracking);
-            line_counter = 0;
-        }
-        else if (tracking == 12) { //1101 1100
-            // turn right
-            buffer[1] = 1;
-            buffer[2] = 100;
-            buffer[3] = 1;
-            buffer[4] = 50;
-            printf(">>> slight RIGHT\n");
-        } else if (tracking == 14) { // 1110
-            // turn right
-            buffer[1] = 1;
-            buffer[2] = 130;
-            buffer[3] = 1;
-            buffer[4] = 40;
-            printf(">>> big RIGHT\n");
-        } else if (tracking == 11||tracking == 3 ) { //1011 0011 
-            // turn left
-            buffer[1] = 1;
-            buffer[2] = 50;
-            buffer[3] = 1;
-            buffer[4] = 100;
-            printf(">>> slight LEFT\n");
-        } else if (tracking == 7 ) { // 0111
-            // turn left
-            buffer[1] = 1;
-            buffer[2] = 40;
-            buffer[3] = 1;
-            buffer[4] = 130;
-            printf(">>> big LEFT\n");
-        } else if (tracking == 15 && lineout_counter<250) { //1111
-            buffer[1] = old_buffer[1];
-            buffer[2] = old_buffer[2];
-            buffer[3] = old_buffer[3];
-            buffer[4] = old_buffer[4];
-            printf(">>> lineout : go\n");
-        }
-        else if (tracking == 15){ //1111
-            buffer[1] = 0;
-            buffer[2] = 40;
-            buffer[3] = 0;
-            buffer[4] = 40;
-            printf(">>> line out : BACK\n");
-        }
-        else if (tracking == 13 ||tracking == 9) {//1001 1101
-            // go straight
-            buffer[1] = 1;
             buffer[2] = 70;
             buffer[3] = 1;
-            buffer[4] = 80;
-            printf(">>> STRAIGHT\n");
-        }   
-    }
-    else if(shift == 2){
-                if (line_counter>40 && tracking == 14||tracking == 12||tracking == 0|| tracking == 1||tracking == 2||tracking == 4||tracking == 8||tracking == 10||tracking == 5||tracking == 6){ //0000 0001 0010 0100 1000 1010 0101 0110
-            res = -1;
-            printf(">>> INTERSECTION :[%d]\n", tracking);
-            line_counter = 0;
-        }
-        else if (tracking == 13 || tracking == 12) { //1101 1100
-            // turn right
-            buffer[1] = 1;
-            buffer[2] = 100;
-            buffer[3] = 1;
-            buffer[4] = 50;
-            printf(">>> slight RIGHT\n");
-        } else if (tracking == 14) { // 1110
-            // turn right
-            buffer[1] = 1;
-            buffer[2] = 130;
-            buffer[3] = 1;
-            buffer[4] = 40;
-            printf(">>> big RIGHT\n");
-        } else if (tracking == 3 ) { // 0011 
-            // turn left
-            buffer[1] = 1;
-            buffer[2] = 50;
-            buffer[3] = 1;
-            buffer[4] = 100;
-            printf(">>> slight LEFT\n");
-        } else if (tracking == 7 ) { // 0111
-            // turn left
-            buffer[1] = 1;
-            buffer[2] = 40;
-            buffer[3] = 1;
-            buffer[4] = 130;
-            printf(">>> big LEFT\n");
-        } else if (tracking == 15 && lineout_counter<250) { //1111
-            buffer[1] = old_buffer[1];
-            buffer[2] = old_buffer[2];
-            buffer[3] = old_buffer[3];
-            buffer[4] = old_buffer[4];
-            printf(">>> lineout : go\n");
-        }
-        else if (tracking == 15){ //1111
-            buffer[1] = 0;
-            buffer[2] = 40;
-            buffer[3] = 0;
-            buffer[4] = 40;
-            printf(">>> line out : BACK\n");
-        }
-        else if (tracking == 11 ||tracking == 9) {//1001 1011
-            // go straight
-            buffer[1] = 1;
-            buffer[2] = 80;
-            buffer[3] = 1;
             buffer[4] = 70;
-            printf(">>> STRAIGHT\n");
         }   
+        write(fd, buffer, 5);
+        old_buffer[1] = buffer[1];
+        old_buffer[2] = buffer[2];
+        old_buffer[3] = buffer[3];
+        old_buffer[4] = buffer[4];
+        line_counter++;
+        delay(INTERVAL); // delay loop for INTERVAL miliseconds
 
-    }
-    write(fd, buffer, 5);
-    old_buffer[1] = buffer[1];
-    old_buffer[2] = buffer[4];
-    old_buffer[3] = buffer[3];
-    old_buffer[4] = buffer[2];
-    delay(INTERVAL);    // delay loop for INTERVAL miliseconds
-    return res; // res = -1 for intersection, 0 for rest
-    
-}
+    return res;// res = -1 for intersection, 0 for rest
+    } 
 
-int makeTurn(int fd, int decision) { //left = 0, up = 1, left = 2, uturn= 3
+
+int makeTurn(int fd, int decision) { //right = 0, up = 1, left = 2, uturn= 3
     int tracking = 0;
     int turn_count = 0;
     int real_turn = 0; 
-    char buffer[] = {0x01, 1, 200, 1, 200};
+    char buffer[] = {0x01, 1, 10, 1, 10};
     while (1){
+        printf("curr_pos.dir :%d\n",curr_pos.dir);
+        printf("decision :%d\n",decision);
         switch(curr_pos.dir){
             case 0:
                 real_turn = (decision + 1) % 4;
+                break;
             case 1:
                 real_turn = decision;
+                break;
             case 2:
                 real_turn = (decision + 3) % 4;
+                break;
             case 3:
                 real_turn = (decision + 2) % 4;
+                break;
         }
-        if (real_turn == 0){
+        if (real_turn == 2){
             buffer[1] = 0;
             buffer[2] = 70;
             buffer[3] = 1;
             buffer[4] = 70;
         }
-        else if(real_turn == 2){
+        else if(real_turn == 0){
             buffer[1] = 1;
             buffer[2] = 70;
             buffer[3] = 0;
             buffer[4] = 70;
         }
-        else{
+        else if(real_turn == 3){
             buffer[1] = 1;
             buffer[2] = 80;
             buffer[3] = 0;
             buffer[4] = 80;
-
         }
-        if (real_turn != 2){
+        else{
+            break;
+        }
+         printf("real_turn :%d\n",real_turn);
+        if (real_turn != 3){
             tracking = getTraceInfo(fd);
             if ((tracking != 0b1111) &&turn_count>60){//150-20
-                printf("turn_count :%d",turn_count);
+                printf("turn_count :%d\n",turn_count);
                 break;
             }
             write(fd, buffer, 5);
             delay(5);
             turn_count ++;
-            printf(">>> turning\n");
-            if(turn_count > 200){//150-80
-                printf("kill!!!!!!!!!!!!");
-                return tracking;
+            // printf(">>> turning\n");
+            if(turn_count > 130){//150-80
+                printf("kill!!!!!!!!!!!!\n");
+                break;
             }
         }
         else{
             tracking = getTraceInfo(fd);
-            if (tracking != 0b1111 &&turn_count>180){
+            if (tracking != 0b1111 &&turn_count>200){
                 printf("turn_count :%d",turn_count);
                 break;
             }
             write(fd, buffer, 5);
             delay(5);
             turn_count ++;
-            printf(">>> turning\n");
-            if(turn_count > 400){
+            // printf(">>> turning\n");
+            if(turn_count > 300){
                 printf("kill!!!!!!!!!!!!!1");
-                return tracking;
+                break;
             }
 
         }
     }
+    buffer[1] = 1;
+    buffer[2] = 80;
+    buffer[3] = 1;
+    buffer[4] = 80;
     return tracking;
 }
-void updateCoord() {
+void updateCoord(int qr_x, int qr_y, int prev_x, int prev_y) {
     // 현재 위치와 방향에 따라 좌표를 업데이트
     // @minseok: check if it's properly done.
-    switch (curr_pos.dir) {
-        case 0: // RIGHT
-            curr_pos.x += 1;
-            break;
-        case 1: // UP
-            curr_pos.y += 1;
-            break;
-        case 2: // LEFT
-            curr_pos.x -= 1;
-            break;
-        case 3: // DOWN
-            curr_pos.y -= 1;
-            break;
-        default:
-            printf("Invalid direction\n");
-            break;
-    }
+    // switch (curr_pos.dir) {
+    //     case 0: // RIGHT
+    //         curr_pos.x += 1;
+    //         break;
+    //     case 1: // UP
+    //         curr_pos.y += 1;
+    //         break;
+    //     case 2: // LEFT
+    //         curr_pos.x -= 1;
+    //         break;
+    //     case 3: // DOWN
+    //         curr_pos.y -= 1;
+    //         break;
+    //     default:
+    //         printf("Invalid direction\n");
+    //         break;
+    // }
+
+    curr_pos.x = qr_x;
+    curr_pos.y = qr_y;
+    // if (prev_x - qr_x == 1) {
+    //     curr_pos.dir = 2;
+    // } else if (prev_x - qr_x == -1) {
+    //     curr_pos.dir = 0;
+    // } else if (prev_y - qr_y == 1) {
+    //     curr_pos.dir = 3;
+    // } else {
+    //     curr_pos.dir = 1;
+    // }
+    
 
     // // 좌표가 범위를 벗어나지 않도록 확인
     // if (curr_pos.x < -1) curr_pos.x =-1;
@@ -500,9 +402,10 @@ void updateCoord() {
 }
 
 
-int decide_loc(int tracked, DGIST receivedData) {
+int decide_loc_QR(DGIST receivedData, int qr_x, int qr_y) {
     // @minseok
-    struct position curr_pos = {receivedData.players[player].row, receivedData.players[player].col, 0};
+    // struct position curr_pos = {receivedData.players[player].row, receivedData.players[player].col, 0};
+    // FIXME: 
     int location = 0;
     Item_val bestItem;
     bestItem.score = 0;
@@ -528,35 +431,36 @@ int decide_loc(int tracked, DGIST receivedData) {
     if (bestItem.location.x != -1 && bestItem.location.y != -1) {
         // 가로 방향으로 우선적으로 이동한다. 이동하려는 방향의 item이 trap이 아닌 경우
         // 가로 방향 우선 탐색
-        if (bestItem.location.x > curr_pos.x 
-                && receivedData.map[curr_pos.x + 1][curr_pos.y].item.status != trap) {
+        if (bestItem.location.x > qr_x 
+                && receivedData.map[qr_x + 1][qr_y].item.status != trap) {
             printf("BestItem(%d, %d) Decision 0\n", bestItem.location.x, bestItem.location.y);
             return 0; // 오른쪽으로 이동
-        } else if (bestItem.location.x < curr_pos.x 
-                && receivedData.map[curr_pos.x - 1][curr_pos.y].item.status != trap) {
+        } else if (bestItem.location.x < qr_x 
+                && receivedData.map[qr_x - 1][qr_y].item.status != trap) {
             printf("BestItem(%d, %d) Decision 2\n", bestItem.location.x, bestItem.location.y);
             return 2; // 왼쪽으로 이동
         }
 
         // 세로 방향 탐색
-        if (bestItem.location.y > curr_pos.y 
-                && receivedData.map[curr_pos.x][curr_pos.y + 1].item.status != trap) {
+        if (bestItem.location.y > qr_y 
+                && receivedData.map[qr_x][qr_y + 1].item.status != trap) {
             printf("BestItem(%d, %d) Decision 1\n", bestItem.location.x, bestItem.location.y);
             return 1; // 위쪽으로 이동
-        } else if (bestItem.location.y < curr_pos.y 
-                && receivedData.map[curr_pos.x][curr_pos.y - 1].item.status != trap) {
+        } else if (bestItem.location.y < qr_y 
+                && receivedData.map[qr_x][qr_y - 1].item.status != trap) {
             printf("BestItem(%d, %d) Decision 3\n", bestItem.location.x, bestItem.location.y);
             return 3; // 아래쪽으로 이동
         }
 
     }
+            printf("BestItem(%d, %d) Decision 3\n", bestItem.location.x, bestItem.location.y);
     // 함정을 피할 수 없는 경우 
         // 0: right, 1: up, 2: left, 3: down
-    if (curr_pos.x + 1 <= 4 && receivedData.map[curr_pos.x + 1][curr_pos.y].item.status != trap) {
+    if (qr_x + 1 <= 4 && receivedData.map[qr_x + 1][qr_y].item.status != trap) {
         return 0;
-    } else if (curr_pos.y + 1 <= 4 && receivedData.map[curr_pos.x][curr_pos.y + 1].item.status != trap) {
+    } else if (qr_y + 1 <= 4 && receivedData.map[qr_x][qr_y + 1].item.status != trap) {
         return 1;
-    } else if (curr_pos.x - 1 >= 0 && receivedData.map[curr_pos.x - 1][curr_pos.y].item.status != trap) {
+    } else if (qr_x - 1 >= 0 && receivedData.map[qr_x - 1][qr_y].item.status != trap) {
         return 2;
     } else{
         return 3;
@@ -566,12 +470,12 @@ int decide_loc(int tracked, DGIST receivedData) {
     // 0: straight, 1: left, 2: down, 3: right
 }
 
-int decision_trap(int tracked, DGIST receivedData) {
+int decision_trap_QR(DGIST receivedData, int qr_x, int qr_y) {
     // 상대 플레이어 위치 확인
     int oppo_row = receivedData.players[1-player].row; // 0번 플레이어가 우리라고 가정
     int oppo_col = receivedData.players[1-player].col;
     // 현재 위치와 상대 플레이어 위치의 맨해튼 거리 계산
-    int distance = abs(receivedData.players[player].row - oppo_row) + abs(receivedData.players[player].col - oppo_col);
+    int distance = abs(qr_x - oppo_row) + abs(qr_y - oppo_col);
 
     // 상대 플레이어가 1칸 이내에 있고, 남은 함정 개수가 1개 이상인 경우
     if (distance <= 1 && receivedData.players[player].bomb > 0) {
@@ -581,12 +485,21 @@ int decision_trap(int tracked, DGIST receivedData) {
     }
 }
 
+DGIST dgist;
+int decision_dir;
+int qr_x;
+int qr_y; 
+int prev_x; 
+int prev_y; 
+int curr_qr; 
+int prev_qr = -1;
+
 int main(int argc, char *argv[]){
     /*    USER INPUT    */
     // get the port number from user -> portNo
     // get the starting position from user as 0 or 1 -> player
     // get the first coordinate from argument
-    if (argc != 3) {
+    if (argc != 4) {
         printf("Usage: %s <server_ip> <server_port> <startPosition: 0/1>\n", argv[0]);
         exit(-1);
     }
@@ -597,6 +510,8 @@ int main(int argc, char *argv[]){
     int client_socket;
     struct sockaddr_in server_addr;
     pthread_t tid;
+    pthread_t tid2;
+    DGIST *receivedData;
 
     client_socket = socket(AF_INET, SOCK_STREAM, 0);
     server_addr.sin_family = AF_INET;
@@ -607,20 +522,21 @@ int main(int argc, char *argv[]){
         exit(-1);
     }
 
-    DGIST dgist;
-    dgist.players[0].socket = client_socket;
+    dgist.players[player].socket = client_socket;
 
     pthread_create(&tid, NULL, sockListener, &dgist);
+    pthread_create(&tid2, NULL, readQR, &curr_qr);
 
     int fd = gpio_init();
     /* DECLARE VARIABLES */
-    int speed = 200;
-    int decision_pos, trap_decision;
+    int shift = 0;
+    int decision_pos;
+    int trap_decision = 0;
 
     if (player == 0) {
-        curr_pos.x = -1;
-        curr_pos.y = 0;
-        curr_pos.dir = 0;
+        curr_pos.x = 0;
+        curr_pos.y = -1;
+        curr_pos.dir = 1;
     } else if (player == 1) {
         curr_pos.x = 5;
         curr_pos.y = 4;
@@ -643,23 +559,32 @@ int main(int argc, char *argv[]){
     while (1) {
         /*     loop body     */
         int tracked = getTraceInfo(fd);     // get tracing info get_tracing_info(fd);
-        int qr = readQR();                  // read qr code
-        // TODO: check if the QR detection works properly
-        int qr_x = qr/10;
-        int qr_y = qr%10;
-        // default: trace the line until a new intersection is detected
-        // if intersection is detected (or QR is detected)
-        int trace = traceLine(fd, tracked, speed);
+        receivedData = &dgist;
+        // buffer[2] = 0;
+        // buffer[4] = 0;
+        // write(fd, buffer, 5);
+        // delay(5);
+        // curr_qr = readQR();                  // read qr code
+
+        qr_x = curr_qr/10;
+        qr_y = curr_qr%10;
+        int sockRes = sendSVR_QR(client_socket, qr_x, qr_y, trap_decision);
+        //printf("trap decision[%d] sockRes[%d], prev_qr[%d] curr_qr[%d]\n", trap_decision, sockRes, prev_qr, curr_qr);
+        if (curr_qr!=-1 && prev_qr!=curr_qr) {
+            printf("If condition L689 met\n");
+            prev_qr = curr_qr;
+            prev_x = qr_x;
+            prev_y = qr_y;
+            updateCoord(qr_x, qr_y, prev_x, prev_y);
+            decision_dir = decide_loc_QR(dgist, qr_x, qr_y);
+            trap_decision = decision_trap_QR(dgist, qr_x, qr_y);
+            printf("decision_dir :%d\n",decision_dir);
+            
+        }
+        int trace = traceLine(fd, tracked, shift);
         if (trace == -1) {
-            // when the bot arrives at an intersection -> TODO: check if the qr-condition would be okay.
-            // 1. update the current position
-            // 2. make a decision here
-            // 3. turn the bot. when the rotation is complete, then get back to loop
-            updateCoord();
-            trap_decision = decision_trap(tracked, receivedData);
-            int sockRes = sendSVR(client_socket, decision_dir, trap_decision);
-            decision_dir = decide_loc(tracked, receivedData);
             int turnRes = makeTurn(fd, decision_dir);
+            curr_pos.dir= decision_dir; 
         }
 
         /*     loop control     */

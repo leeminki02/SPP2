@@ -1,6 +1,6 @@
 FILE ?= main
 CC= g++
-CFLAGS= `pkg-config --cflags --libs opencv4` -l wiringPi
+CFLAGS= `pkg-config --cflags --libs opencv4` -l wiringPi -lpthread
 
 # C++ 소스 파일을 컴파일하기 위한 규칙
 %.o: %.cpp
@@ -8,7 +8,7 @@ CFLAGS= `pkg-config --cflags --libs opencv4` -l wiringPi
 
 # C 소스 파일을 컴파일하기 위한 규칙
 %.o: %.c
-	gcc -c $< -o $@ $(CFLAGS)
+	gcc -pthread -c $< -o $@ $(CFLAGS)
 
 # 기본 타겟: main.cpp와 qr.cpp를 링크하여 실행 파일 생성
 runfile: $(FILE).o qr.o
@@ -16,7 +16,7 @@ runfile: $(FILE).o qr.o
 
 # C 파일만을 위한 타겟
 c: $(FILE).o qr.o
-	g++ $^ -o $(FILE) `pkg-config --cflags --libs opencv4` -l wiringPi
+	g++ $^ -o $(FILE) `pkg-config --cflags --libs opencv4` -l wiringPi -lpthread
 clean:
 	rm -f runfile $(FILE) *.o
 

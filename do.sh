@@ -1,0 +1,1 @@
+make clean; make c; LD_PRELOAD=./noimshow.so ./main 192.168.0.91 2222 1

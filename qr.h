@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-int qr_detector();
+int qr_detector(int*);
 
 #ifdef __cplusplus
 }
